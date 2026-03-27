@@ -42,6 +42,16 @@ Function Invoke-ExecExtensionMapping {
           'Outcomes'    = $Outcomes
         }
       }
+      'ConnectWise' {
+        $Result = Get-ConnectWiseMapping -CIPPMapping $Table
+      }
+      'ConnectWiseFields' {
+        $Fields = Get-ConnectWiseBoards
+        $Result = @{
+          'Boards'     = $Fields.Boards
+          'Priorities' = $Fields.Priorities
+        }
+      }
       'PWPushFields' {
         $Accounts = Get-PwPushAccount
         $Result = @{
@@ -59,6 +69,9 @@ Function Invoke-ExecExtensionMapping {
         }
         'HaloPSA' {
           $Result = Set-HaloMapping -CIPPMapping $Table -APIName $APIName -Request $Request
+        }
+        'ConnectWise' {
+          $Result = Set-ConnectWiseMapping -CIPPMapping $Table -APIName $APIName -Request $Request
         }
         'NinjaOne' {
           $Result = Set-NinjaOneOrgMapping -CIPPMapping $Table -APIName $APIName -Request $Request

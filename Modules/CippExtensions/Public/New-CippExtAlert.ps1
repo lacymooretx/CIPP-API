@@ -28,6 +28,20 @@ function New-CippExtAlert {
                     New-GradientAlert -Title $Alert.AlertTitle -Description $Alert.AlertText -Client $Alert.TenantId
                 }
             }
+            'ConnectWise' {
+                if ($Configuration.ConnectWise.enabled) {
+                    $MappingFile = Get-CIPPAzDataTableEntity @MappingTable -Filter "PartitionKey eq 'ConnectWiseMapping'"
+                    $TenantId = (Get-Tenants | Where-Object defaultDomainName -EQ $Alert.TenantId).customerId
+                    Write-Host "TenantId: $TenantId"
+                    $MappedId = ($MappingFile | Where-Object { $_.RowKey -eq $TenantId }).IntegrationId
+                    Write-Host "MappedId: $MappedId"
+                    if ($MappedId) {
+                        New-ConnectWiseTicket -Title $Alert.AlertTitle -Description $Alert.AlertText -Client $MappedId
+                    } else {
+                        Write-LogMessage -API 'Alerts' -tenant $Alert.TenantId -message 'ConnectWise: No mapping found for tenant. Skipping ticket creation.' -sev Warning
+                    }
+                }
+            }
         }
     }
 
