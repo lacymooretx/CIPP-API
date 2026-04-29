@@ -5355,6 +5355,15 @@
     "value": "OnPremDirectorySynchronization.ReadWrite.All"
   },
   {
+    "description": "Read all on-premises directory synchronization information",
+    "displayName": "Read all on-premises directory synchronization information",
+    "id": "f6609722-4100-44eb-b747-e6ca0536989d",
+    "Origin": "Delegated",
+    "userConsentDescription": "Allows the app to read all on-premises directory synchronization information for your organization, on your behalf.",
+    "userConsentDisplayName": "Read all on-premises directory synchronization information",
+    "value": "OnPremDirectorySynchronization.Read.All"
+  },
+  {
     "description": "Read and Modify Tenant-Acquired Telephone Number Details",
     "displayName": "Read and Modify Tenant-Acquired Telephone Number Details",
     "id": "424b07a8-1209-4d17-9fe4-9018a93a1024",
