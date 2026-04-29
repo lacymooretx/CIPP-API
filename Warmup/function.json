@@ -1,0 +1,11 @@
+{
+  "scriptFile": "../Modules/CippEntrypoints/CippEntrypoints.psm1",
+  "entryPoint": "Receive-CippWarmupTrigger",
+  "bindings": [
+    {
+      "type": "warmupTrigger",
+      "direction": "in",
+      "name": "warmupContext"
+    }
+  ]
+}

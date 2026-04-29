@@ -575,5 +575,25 @@ function Receive-CIPPTimerTrigger {
     return $true
 }
 
-Export-ModuleMember -Function @('Receive-CippHttpTrigger', 'Receive-CippQueueTrigger', 'Receive-CippOrchestrationTrigger', 'Receive-CippActivityTrigger', 'Receive-CIPPTimerTrigger')
+function Receive-CippWarmupTrigger {
+    <#
+    .SYNOPSIS
+        Pre-warms a new function app instance during scale-out.
+    .DESCRIPTION
+        Fires when Azure Functions adds a new instance to the app (scale-out only — not on restart/deploy).
+        The act of being invoked forces the PowerShell worker to spin up, which runs profile.ps1
+        (module imports, Get-CIPPAuthentication, version check). By the time this body executes,
+        the worker is fully primed for HTTP traffic, so the first user request avoids the 30–90s
+        cold-start tax observed in App Insights.
+    .PARAMETER warmupContext
+        Warmup binding context (unused; required by the binding signature).
+    .FUNCTIONALITY
+        Entrypoint
+    #>
+    param($warmupContext)
+
+    Write-Information "CIPP warmup: instance $($env:WEBSITE_INSTANCE_ID) primed (version $($env:CippVersion))"
+}
+
+Export-ModuleMember -Function @('Receive-CippHttpTrigger', 'Receive-CippQueueTrigger', 'Receive-CippOrchestrationTrigger', 'Receive-CippActivityTrigger', 'Receive-CIPPTimerTrigger', 'Receive-CippWarmupTrigger')
 
