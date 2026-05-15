@@ -35,6 +35,13 @@ function Invoke-ExecExtensionsConfig {
             $Body.Hudu.NextSync = ''
         }
 
+        if ($Body.ITGlue.NextSync) {
+            $Timestamp = [datetime]::UnixEpoch.AddSeconds([int]$Body.ITGlue.NextSync).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            Register-CIPPExtensionScheduledTasks -Reschedule -NextSync $Body.ITGlue.NextSync -Extensions 'ITGlue'
+            $AddedText = "$AddedText Next IT Glue sync will be at $Timestamp."
+            $Body.ITGlue.NextSync = ''
+        }
+
         $Table = Get-CIPPTable -TableName Extensionsconfig
         foreach ($APIKey in $Body.PSObject.Properties.Name) {
             Write-Information "Working on $apikey"

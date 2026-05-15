@@ -31,6 +31,12 @@ Function Invoke-ExecExtensionMapping {
       'HuduFields' {
         $Result = Get-HuduFieldMapping -CIPPMapping $Table
       }
+      'ITGlue' {
+        $Result = Get-ITGlueMapping -CIPPMapping $Table
+      }
+      'ITGlueFields' {
+        $Result = Get-ITGlueFieldMapping -CIPPMapping $Table
+      }
       'Sherweb' {
         $Result = Get-SherwebMapping -CIPPMapping $Table
       }
@@ -87,6 +93,14 @@ Function Invoke-ExecExtensionMapping {
         }
         'HuduFields' {
           $Result = Set-ExtensionFieldMapping -CIPPMapping $Table -APIName $APIName -Request $Request -Extension 'Hudu'
+          Register-CIPPExtensionScheduledTasks
+        }
+        'ITGlue' {
+          $Result = Set-ITGlueMapping -CIPPMapping $Table -APIName $APIName -Request $Request
+          Register-CIPPExtensionScheduledTasks
+        }
+        'ITGlueFields' {
+          $Result = Set-ExtensionFieldMapping -CIPPMapping $Table -APIName $APIName -Request $Request -Extension 'ITGlue'
           Register-CIPPExtensionScheduledTasks
         }
       }

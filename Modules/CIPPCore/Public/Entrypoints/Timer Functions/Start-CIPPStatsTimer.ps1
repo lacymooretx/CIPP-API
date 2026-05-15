@@ -51,6 +51,7 @@ function Start-CIPPStatsTimer {
             PolicyCount         = $policyCount
             CIPPAPI             = $RawExt.CIPPAPI.Enabled
             Hudu                = $RawExt.Hudu.Enabled
+            ITGlue              = $RawExt.ITGlue.Enabled
             Sherweb             = $RawExt.Sherweb.Enabled
             Gradient            = $RawExt.Gradient.Enabled
             NinjaOne            = $RawExt.NinjaOne.Enabled
