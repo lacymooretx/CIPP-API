@@ -126,9 +126,13 @@ function Sync-ITGlueUsers {
     $CompanyResult.Logs.Add("Found $(($LicensedUsers | Measure-Object).Count) licensed users")
 
     foreach ($User in $LicensedUsers) {
+        $UPN = $User.userPrincipalName
         try {
-            $UPN = $User.userPrincipalName
             if (-not $UPN) { continue }
+            if ($UPN -match '\.smtp\.exclaimer\.cloud$') {
+                $CompanyResult.Logs.Add("Skipping Exclaimer shadow account: $UPN")
+                continue
+            }
 
             # ----- Contact upsert -----
             $ExistingContact = $ExistingContacts | Where-Object {
@@ -249,7 +253,18 @@ function Sync-ITGlueUsers {
 
             $CompanyResult.Users++
         } catch {
-            $CompanyResult.Errors.Add("User $($User.userPrincipalName): $($_.Exception.Message)")
+            $Msg = $_.Exception.Message
+            # Pull the IT Glue JSON:API error body if present for actionable detail
+            $Detail = ''
+            try {
+                if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+                    $Parsed = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
+                    if ($Parsed.errors) { $Detail = ' | ' + (($Parsed.errors | ForEach-Object { "$($_.title): $($_.detail) ($($_.source.pointer))" }) -join '; ') }
+                }
+            } catch {}
+            $FullMsg = "User ${UPN}: ${Msg}${Detail}"
+            $CompanyResult.Errors.Add($FullMsg)
+            Write-LogMessage -API 'ITGlueSync' -tenant $Tenant.defaultDomainName -message $FullMsg -sev Warning
         }
     }
 }
@@ -301,13 +316,15 @@ function Sync-ITGlueDevices {
     param($OrgId, $Tenant, $Cache, $ConfigTypeId, [bool]$CreateMissing, $ExcludeSerials, $CompanyResult)
 
     $ExistingConfigs = Invoke-ITGlueRequest -Path "/organizations/$OrgId/relationships/configurations" -AllPages
-    $IntuneDesktopDeviceTypes = @('windows', 'windowsRT', 'macMDM', 'macOS', 'mac')
+    $IntuneDesktopDeviceTypes = @('windows', 'windowsrt', 'macmdm', 'macos', 'mac')
 
+    $RawCount = ($Cache.Devices | Measure-Object).Count
     $Devices = $Cache.Devices | Where-Object {
-        ($_.operatingSystem -in $IntuneDesktopDeviceTypes -or $_.deviceType -in $IntuneDesktopDeviceTypes) -and
-        ($_.serialNumber -and $ExcludeSerials -notcontains $_.serialNumber)
+        $osMatch = ($_.operatingSystem -and ($IntuneDesktopDeviceTypes -contains ($_.operatingSystem.ToString().ToLower())))
+        $typeMatch = ($_.deviceType -and ($IntuneDesktopDeviceTypes -contains ($_.deviceType.ToString().ToLower())))
+        ($osMatch -or $typeMatch) -and ($_.serialNumber -and $ExcludeSerials -notcontains $_.serialNumber)
     }
-    $CompanyResult.Logs.Add("Found $(($Devices | Measure-Object).Count) sync-eligible devices")
+    $CompanyResult.Logs.Add("Devices: $RawCount in cache, $(($Devices | Measure-Object).Count) sync-eligible after filter, CreateMissing=$CreateMissing")
 
     foreach ($Device in $Devices) {
         try {
@@ -352,7 +369,17 @@ enrolled-by:$($Device.userPrincipalName)
 
             $CompanyResult.Devices++
         } catch {
-            $CompanyResult.Errors.Add("Device $($Device.deviceName): $($_.Exception.Message)")
+            $Msg = $_.Exception.Message
+            $Detail = ''
+            try {
+                if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+                    $Parsed = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
+                    if ($Parsed.errors) { $Detail = ' | ' + (($Parsed.errors | ForEach-Object { "$($_.title): $($_.detail) ($($_.source.pointer))" }) -join '; ') }
+                }
+            } catch {}
+            $FullMsg = "Device $($Device.deviceName): $Msg$Detail"
+            $CompanyResult.Errors.Add($FullMsg)
+            Write-LogMessage -API 'ITGlueSync' -tenant $Tenant.defaultDomainName -message $FullMsg -sev Warning
         }
     }
 }
