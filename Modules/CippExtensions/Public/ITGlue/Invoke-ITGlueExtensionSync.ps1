@@ -89,7 +89,9 @@ function Invoke-ITGlueExtensionSync {
         # ============================================================
         if ($ITGConfig.ImportDomains -eq $true) {
             try {
-                Sync-ITGlueDomains -OrgId $OrgId -Tenant $Tenant -Cache $Cache -CompanyResult $CompanyResult
+                Sync-ITGlueDomains -OrgId $OrgId -Tenant $Tenant -Cache $Cache `
+                    -Monitor ($ITGConfig.MonitorDomains -eq $true) `
+                    -CompanyResult $CompanyResult
             } catch {
                 $CompanyResult.Errors.Add("Domains: $($_.Exception.Message)")
             }
@@ -411,15 +413,174 @@ enrolled-by:$($Device.userPrincipalName)
 
 # ---------- DOMAINS ----------
 function Sync-ITGlueDomains {
-    param($OrgId, $Tenant, $Cache, $CompanyResult)
+    param($OrgId, $Tenant, $Cache, [bool]$Monitor, $CompanyResult)
 
     $VerifiedDomains = $Cache.Domains | Where-Object { $_.isVerified -eq $true }
-    if (-not $VerifiedDomains) { return }
-
-    $CompanyResult.Logs.Add("Found $(($VerifiedDomains | Measure-Object).Count) verified M365 domains")
-    # Pass-through note in the org description; IT Glue's Domains endpoint is read-only via WHOIS sweeps.
-    # If a richer domain sync is wanted later, a dedicated Flex Asset Type is the right home.
-    foreach ($D in $VerifiedDomains) {
-        $CompanyResult.Logs.Add("Domain (informational only): $($D.id)")
+    if (-not $VerifiedDomains) {
+        $CompanyResult.Logs.Add('No verified M365 domains found; skipping domain sync.')
+        return
     }
+    $CompanyResult.Logs.Add("Found $(($VerifiedDomains | Measure-Object).Count) verified M365 domains; Monitor=$Monitor")
+
+    $TypeId = Get-ITGlueDomainsFlexAssetTypeId
+    if (-not $TypeId) {
+        $CompanyResult.Errors.Add('Domains: could not resolve or create the CIPP M365 Domains flex asset type.')
+        return
+    }
+
+    $ExistingDomainAssets = Invoke-ITGlueRequest -Path "/flexible_assets?filter[organization-id]=$OrgId&filter[flexible-asset-type-id]=$TypeId" -AllPages
+
+    # Optional DNS health enrichment via CIPP's domain analyser cache.
+    $DomainHealthMap = @{}
+    if ($Monitor) {
+        try {
+            $Analyser = Get-CIPPDomainAnalyser -TenantFilter $Tenant.defaultDomainName
+            foreach ($A in $Analyser) {
+                if ($A.Domain) { $DomainHealthMap[$A.Domain.ToLower()] = $A }
+            }
+            $CompanyResult.Logs.Add("Monitor: pulled $($DomainHealthMap.Count) domain analyser records.")
+        } catch {
+            $CompanyResult.Logs.Add("Monitor: could not pull domain analyser data: $($_.Exception.Message)")
+        }
+    }
+
+    foreach ($D in $VerifiedDomains) {
+        $DomainName = "$($D.id)"
+        try {
+            $SupportedServices = if ($D.supportedServices) { ($D.supportedServices -join ', ') } else { '' }
+            $AuthType = "$($D.authenticationType)"
+
+            $Rows = @(
+                Get-ITGlueFormattedField -Title 'Domain Name'         -Value $DomainName
+                Get-ITGlueFormattedField -Title 'Verified'            -Value "$($D.isVerified)"
+                Get-ITGlueFormattedField -Title 'Default'             -Value "$($D.isDefault)"
+                Get-ITGlueFormattedField -Title 'Initial'             -Value "$($D.isInitial)"
+                Get-ITGlueFormattedField -Title 'Root'                -Value "$($D.isRoot)"
+                Get-ITGlueFormattedField -Title 'Authentication Type' -Value $AuthType
+                Get-ITGlueFormattedField -Title 'Supported Services'  -Value $SupportedServices
+                Get-ITGlueFormattedField -Title 'Availability Status' -Value "$($D.availabilityStatus)"
+            ) -join "`n"
+
+            $Body = Get-ITGlueFormattedBlock -Heading 'Microsoft 365 Domain' -Body $Rows
+
+            # Monitor: append a DNS health block.
+            if ($Monitor) {
+                $H = $DomainHealthMap[$DomainName.ToLower()]
+                if ($H) {
+                    $passText = { param($v) if ($null -eq $v -or $v -eq '') { 'Unknown' } elseif ($v -eq $true) { 'Pass' } else { 'Fail' } }
+                    $hRows = @(
+                        Get-ITGlueFormattedField -Title 'Score'              -Value ("{0} / {1} ({2}%)" -f $H.Score, $H.MaximumScore, $H.ScorePercentage)
+                        Get-ITGlueFormattedField -Title 'MX Test'            -Value (& $passText $H.MXPassTest)
+                        Get-ITGlueFormattedField -Title 'SPF Pass All'       -Value (& $passText $H.SPFPassAll)
+                        Get-ITGlueFormattedField -Title 'SPF Record'         -Value "$($H.ActualSPFRecord)"
+                        Get-ITGlueFormattedField -Title 'DMARC Present'      -Value "$($H.DMARCPresent)"
+                        Get-ITGlueFormattedField -Title 'DMARC Action'       -Value "$($H.DMARCActionPolicy)"
+                        Get-ITGlueFormattedField -Title 'DMARC Reporting'    -Value "$($H.DMARCReportingActive)"
+                        Get-ITGlueFormattedField -Title 'DKIM Enabled'       -Value "$($H.DKIMEnabled)"
+                        Get-ITGlueFormattedField -Title 'MX Records'         -Value (($H.ActualMXRecords -join '<br>'))
+                    ) -join "`n"
+                    $Body += "`n" + (Get-ITGlueFormattedBlock -Heading 'DNS Health (CIPP Domain Analyser)' -Body $hRows)
+                    if ($H.ScoreExplanation) {
+                        $explanation = $H.ScoreExplanation -join '<br>'
+                        $Body += "`n" + (Get-ITGlueFormattedBlock -Heading 'Score Explanation' -Body "<tr><td colspan='2' style='padding:4px 8px;'>$explanation</td></tr>")
+                    }
+                } else {
+                    $Body += "`n<p><em>No CIPP domain analyser data found yet for $DomainName. Run a tenant refresh and try again.</em></p>"
+                }
+            }
+
+            $Traits = @{
+                'name'                 = $DomainName
+                'verified'             = "$($D.isVerified)"
+                'default'              = "$($D.isDefault)"
+                'authentication-type'  = $AuthType
+                'supported-services'   = $SupportedServices
+                'microsoft-365'        = $Body
+            }
+
+            $ExistingAsset = $ExistingDomainAssets | Where-Object { $_.attributes.traits.name -eq $DomainName } | Select-Object -First 1
+
+            $Payload = @{
+                data = @{
+                    type       = 'flexible-assets'
+                    attributes = @{
+                        'organization-id'        = [int]$OrgId
+                        'flexible-asset-type-id' = [int]$TypeId
+                        traits                   = $Traits
+                    }
+                }
+            }
+
+            if ($ExistingAsset) {
+                $null = Invoke-ITGlueRequest -Path "/flexible_assets/$($ExistingAsset.id)" -Method PATCH -Body $Payload -Raw
+            } else {
+                $null = Invoke-ITGlueRequest -Path '/flexible_assets' -Method POST -Body $Payload -Raw
+            }
+        } catch {
+            $Msg = $_.Exception.Message
+            $Detail = ''
+            try {
+                if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+                    $Parsed = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
+                    if ($Parsed.errors) { $Detail = ' | ' + (($Parsed.errors | ForEach-Object { "$($_.title): $($_.detail)" }) -join '; ') }
+                }
+            } catch {}
+            $Full = "Domain ${DomainName}: ${Msg}${Detail}"
+            $CompanyResult.Errors.Add($Full)
+            Write-LogMessage -API 'ITGlueSync' -tenant $Tenant.defaultDomainName -message $Full -sev Warning
+        }
+    }
+}
+
+# Ensure the "CIPP M365 Domains" flex asset type exists, creating it (with required fields) if not.
+# Returns the integer type ID, or $null on hard failure. Caches the result on $script: scope for the run.
+function Get-ITGlueDomainsFlexAssetTypeId {
+    if ($script:ITGlueDomainsFlexAssetTypeId) { return $script:ITGlueDomainsFlexAssetTypeId }
+
+    $TypeName = 'CIPP M365 Domains'
+
+    # Try to find an existing type by name (paged).
+    $AllTypes = Invoke-ITGlueRequest -Path '/flexible_asset_types' -AllPages
+    $Match = $AllTypes | Where-Object { $_.attributes.name -eq $TypeName } | Select-Object -First 1
+    if ($Match) {
+        $script:ITGlueDomainsFlexAssetTypeId = [int]$Match.id
+        return $script:ITGlueDomainsFlexAssetTypeId
+    }
+
+    # Otherwise create it with the required fields inline.
+    $CreatePayload = @{
+        data = @{
+            type       = 'flexible_asset_types'
+            attributes = @{
+                name          = $TypeName
+                description   = 'Microsoft 365 verified domains synced by CIPP. One row per domain.'
+                icon          = 'globe'
+                enabled       = $true
+                'show-in-menu'= $true
+            }
+            relationships = @{
+                'flexible-asset-fields' = @{
+                    data = @(
+                        @{ type = 'flexible_asset_fields'; attributes = @{ order = 1; name = 'Name';                kind = 'Text';    required = $true;  'show-in-list' = $true;  'use-for-title' = $true } }
+                        @{ type = 'flexible_asset_fields'; attributes = @{ order = 2; name = 'Verified';            kind = 'Text';    required = $false; 'show-in-list' = $true } }
+                        @{ type = 'flexible_asset_fields'; attributes = @{ order = 3; name = 'Default';             kind = 'Text';    required = $false; 'show-in-list' = $true } }
+                        @{ type = 'flexible_asset_fields'; attributes = @{ order = 4; name = 'Authentication Type'; kind = 'Text';    required = $false; 'show-in-list' = $false } }
+                        @{ type = 'flexible_asset_fields'; attributes = @{ order = 5; name = 'Supported Services';  kind = 'Text';    required = $false; 'show-in-list' = $false } }
+                        @{ type = 'flexible_asset_fields'; attributes = @{ order = 6; name = 'Microsoft 365';       kind = 'Textbox'; required = $false; 'show-in-list' = $false } }
+                    )
+                }
+            }
+        }
+    }
+
+    try {
+        $Created = Invoke-ITGlueRequest -Path '/flexible_asset_types' -Method POST -Body $CreatePayload -Raw
+        if ($Created.data.id) {
+            $script:ITGlueDomainsFlexAssetTypeId = [int]$Created.data.id
+            return $script:ITGlueDomainsFlexAssetTypeId
+        }
+    } catch {
+        Write-Warning ("Failed to create '{0}' flex asset type: {1}" -f $TypeName, $_.Exception.Message)
+    }
+    return $null
 }
