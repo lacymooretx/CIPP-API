@@ -70,7 +70,8 @@ Function Invoke-ExecExtensionTest {
                 $Probe = Invoke-ITGlueRequest -Path '/organizations' -PageSize 1 -Raw
                 if ($null -ne $Probe.data) {
                     $Total = if ($Probe.meta -and $Probe.meta.'total-count') { $Probe.meta.'total-count' } else { ($Probe.data | Measure-Object).Count }
-                    $Results = [pscustomobject]@{'Results' = ('Successfully Connected to IT Glue ({0} region). {1} organizations visible.' -f $script:ITGlueBaseUrl, $Total) }
+                    $Region = if ($Configuration.ITGlue.Region.value) { $Configuration.ITGlue.Region.value } elseif ($Configuration.ITGlue.Region) { "$($Configuration.ITGlue.Region)" } else { 'US' }
+                    $Results = [pscustomobject]@{'Results' = ('Successfully Connected to IT Glue ({0} region). {1} organizations visible.' -f $Region, $Total) }
                 } else {
                     $Results = [pscustomobject]@{'Results' = 'Failed to connect to IT Glue, check your API key, region, and that the key has access enabled.' }
                 }
