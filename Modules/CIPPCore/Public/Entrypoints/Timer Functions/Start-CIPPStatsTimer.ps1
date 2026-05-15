@@ -53,6 +53,7 @@ function Start-CIPPStatsTimer {
             Hudu                = $RawExt.Hudu.Enabled
             ITGlue              = $RawExt.ITGlue.Enabled
             Sherweb             = $RawExt.Sherweb.Enabled
+            Pax8                = $RawExt.Pax8.Enabled
             Gradient            = $RawExt.Gradient.Enabled
             NinjaOne            = $RawExt.NinjaOne.Enabled
             haloPSA             = $RawExt.haloPSA.Enabled

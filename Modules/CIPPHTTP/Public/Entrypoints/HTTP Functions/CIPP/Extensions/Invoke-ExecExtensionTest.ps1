@@ -94,6 +94,16 @@ Function Invoke-ExecExtensionTest {
                     $Results = [pscustomobject]@{'Results' = 'Failed to connect to Sherweb, check your API credentials and try again.' }
                 }
             }
+            'Pax8' {
+                $Headers = Get-Pax8Authentication
+                $Probe = Invoke-RestMethod -Uri 'https://api.pax8.com/v1/companies?page=0&size=1' -Method GET -Headers $Headers -ErrorAction Stop
+                $TotalCompanies = if ($Probe.page.totalElements) { $Probe.page.totalElements } else { ($Probe.content | Measure-Object).Count }
+                if ($null -ne $Probe) {
+                    $Results = [pscustomobject]@{'Results' = ('Successfully Connected to Pax8. {0} companies visible.' -f $TotalCompanies) }
+                } else {
+                    $Results = [pscustomobject]@{'Results' = 'Failed to connect to Pax8, check your API credentials and try again.' }
+                }
+            }
             'HIBP' {
                 $ConnectionTest = Get-HIBPConnectionTest
                 $Results = [pscustomobject]@{'Results' = 'Successfully Connected to HIBP' }
