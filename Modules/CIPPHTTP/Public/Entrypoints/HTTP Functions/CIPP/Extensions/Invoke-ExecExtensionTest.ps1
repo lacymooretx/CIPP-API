@@ -65,6 +65,16 @@ Function Invoke-ExecExtensionTest {
                     $Results = [pscustomobject]@{'Results' = 'Failed to connect to Hudu, check your API credentials and try again.' }
                 }
             }
+            'ConnectWise' {
+                $CWConfig = $Configuration.ConnectWise
+                $Headers = Get-ConnectWiseHeaders -Configuration $CWConfig
+                $SystemInfo = Invoke-RestMethod -Uri "$($CWConfig.BaseURL)/v4_6_release/apis/3.0/system/info" -Method GET -Headers $Headers -ErrorAction Stop
+                if ($SystemInfo.version) {
+                    $Results = [pscustomobject]@{'Results' = ('Successfully Connected to ConnectWise Manage, version: {0} ({1})' -f $SystemInfo.version, $SystemInfo.serverTimeZone) }
+                } else {
+                    $Results = [pscustomobject]@{'Results' = 'Failed to connect to ConnectWise Manage, check your API credentials and base URL.' }
+                }
+            }
             'ITGlue' {
                 Connect-ITGlueAPI -configuration $Configuration
                 $Probe = Invoke-ITGlueRequest -Path '/organizations' -PageSize 1 -Raw
