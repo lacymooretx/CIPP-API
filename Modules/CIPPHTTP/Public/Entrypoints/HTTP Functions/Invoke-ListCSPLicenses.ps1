@@ -7,14 +7,21 @@ function Invoke-ListCSPLicenses {
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
-    # Interact with query parameters or the body of the request.
     $TenantFilter = $Request.Query.tenantFilter
 
     try {
-        $Result = Get-SherwebCurrentSubscription -TenantFilter $TenantFilter
-        $StatusCode = [HttpStatusCode]::OK
+        $Provider = Get-CIPPCSPProvider -TenantFilter $TenantFilter
+        switch ($Provider) {
+            'Pax8'    { $Result = Get-Pax8Subscriptions -TenantFilter $TenantFilter }
+            'Sherweb' { $Result = Get-SherwebCurrentSubscription -TenantFilter $TenantFilter }
+            default {
+                $Result = 'No CSP mapping found for this tenant. Map it to Pax8 or Sherweb in Settings > Integrations.'
+                $StatusCode = [HttpStatusCode]::BadRequest
+            }
+        }
+        if (-not $StatusCode) { $StatusCode = [HttpStatusCode]::OK }
     } catch {
-        $Result = 'Unable to retrieve CSP licenses, ensure that you have enabled the Sherweb integration and mapped the tenant in the integration settings.'
+        $Result = "Unable to retrieve CSP licenses: $($_.Exception.Message)"
         $StatusCode = [HttpStatusCode]::BadRequest
     }
 
@@ -22,5 +29,4 @@ function Invoke-ListCSPLicenses {
         StatusCode = $StatusCode
         Body       = @($Result)
     }
-
 }

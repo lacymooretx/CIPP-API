@@ -9,37 +9,40 @@ function Invoke-ExecCSPLicense {
     param($Request, $TriggerMetadata)
     $Headers = $Request.Headers
 
-
-    # Interact with query parameters or the body of the request.
     $TenantFilter = $Request.Body.tenantFilter
     $Action = $Request.Body.Action
     $SKU = $Request.Body.SKU.value ?? $Request.Body.SKU
 
     try {
-        if ($Action -eq 'Add') {
-            $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -add $Request.Body.Add
-        }
+        $Provider = Get-CIPPCSPProvider -TenantFilter $TenantFilter
+        if (-not $Provider) { throw 'No CSP mapping found for this tenant. Map it to Pax8 or Sherweb in Settings > Integrations.' }
 
-        if ($Action -eq 'Remove') {
-            $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -remove $Request.Body.Remove
+        switch ($Provider) {
+            'Pax8' {
+                if ($Action -eq 'Add')    { $null = Set-Pax8Subscription -Headers $Headers -TenantFilter $TenantFilter -SKU $SKU -Add $Request.Body.Add }
+                if ($Action -eq 'Remove') { $null = Set-Pax8Subscription -Headers $Headers -TenantFilter $TenantFilter -SKU $SKU -Remove $Request.Body.Remove }
+                if ($Action -eq 'NewSub') {
+                    $BillingTerm = if ($Request.Body.BillingTerm) { "$($Request.Body.BillingTerm)" } else { 'Monthly' }
+                    $null = Set-Pax8Subscription -Headers $Headers -TenantFilter $TenantFilter -SKU $SKU -Quantity $Request.Body.Quantity -BillingTerm $BillingTerm
+                }
+                if ($Action -eq 'Cancel') { $null = Remove-Pax8Subscription -Headers $Headers -TenantFilter $TenantFilter -SubscriptionIds $Request.Body.SubscriptionIds }
+            }
+            'Sherweb' {
+                if ($Action -eq 'Add')    { $null = Set-SherwebSubscription -Headers $Headers -TenantFilter $TenantFilter -SKU $SKU -Add $Request.Body.Add }
+                if ($Action -eq 'Remove') { $null = Set-SherwebSubscription -Headers $Headers -TenantFilter $TenantFilter -SKU $SKU -Remove $Request.Body.Remove }
+                if ($Action -eq 'NewSub') { $null = Set-SherwebSubscription -Headers $Headers -TenantFilter $TenantFilter -SKU $SKU -Quantity $Request.Body.Quantity }
+                if ($Action -eq 'Cancel') { $null = Remove-SherwebSubscription -Headers $Headers -TenantFilter $TenantFilter -SubscriptionIds $Request.Body.SubscriptionIds }
+            }
         }
-
-        if ($Action -eq 'NewSub') {
-            $null = Set-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SKU $SKU -Quantity $Request.Body.Quantity
-        }
-        if ($Action -eq 'Cancel') {
-            $null = Remove-SherwebSubscription -Headers $Headers -tenantFilter $TenantFilter -SubscriptionIds $Request.Body.SubscriptionIds
-        }
-        $Result = 'License change executed successfully.'
+        $Result = "License change executed successfully via $Provider."
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $Result = "Failed to execute license change. Error: $_"
         $StatusCode = [HttpStatusCode]::InternalServerError
     }
-    # If $GraphRequest is a GUID, the subscription was edited successfully, and return that it's done.
+
     return [HttpResponseContext]@{
         StatusCode = $StatusCode
         Body       = $Result
     }
-
 }

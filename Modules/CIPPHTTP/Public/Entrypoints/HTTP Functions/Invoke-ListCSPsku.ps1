@@ -7,19 +7,33 @@ function Invoke-ListCSPsku {
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
-    # Interact with query parameters or the body of the request.
     $TenantFilter = $Request.Query.tenantFilter
     $CurrentSkuOnly = $Request.Query.currentSkuOnly
 
     try {
-        if ($CurrentSkuOnly) {
-            $GraphRequest = Get-SherwebCurrentSubscription -TenantFilter $TenantFilter
-        } else {
-            $GraphRequest = Get-SherwebCatalog -TenantFilter $TenantFilter
+        $Provider = Get-CIPPCSPProvider -TenantFilter $TenantFilter
+        switch ($Provider) {
+            'Pax8' {
+                if ($CurrentSkuOnly) {
+                    $GraphRequest = Get-Pax8Subscriptions -TenantFilter $TenantFilter
+                } else {
+                    $GraphRequest = Get-Pax8Catalog -TenantFilter $TenantFilter
+                }
+            }
+            'Sherweb' {
+                if ($CurrentSkuOnly) {
+                    $GraphRequest = Get-SherwebCurrentSubscription -TenantFilter $TenantFilter
+                } else {
+                    $GraphRequest = Get-SherwebCatalog -TenantFilter $TenantFilter
+                }
+            }
+            default {
+                $GraphRequest = @()
+            }
         }
         $StatusCode = [HttpStatusCode]::OK
     } catch {
-        if ($_.Exception.Message -eq 'No Sherweb mapping found') {
+        if ($_.Exception.Message -in @('No Sherweb mapping found', 'No Pax8 mapping found')) {
             $GraphRequest = @()
             $StatusCode = [HttpStatusCode]::OK
         } else {
@@ -35,5 +49,4 @@ function Invoke-ListCSPsku {
         StatusCode = $StatusCode
         Body       = @($GraphRequest)
     }
-
 }

@@ -20,9 +20,20 @@ function New-CIPPUserTask {
 
     try {
         if ($UserObj.licenses.value) {
-            if ($UserObj.sherwebLicense.value) {
-                $null = Set-SherwebSubscription -Headers $Headers -TenantFilter $UserObj.tenantFilter -SKU $UserObj.sherwebLicense.value -Add 1
-                $null = $Results.Add('Added Sherweb License, scheduling assignment')
+            # Form may submit a CSP SKU as either `cspLicense` (preferred, provider-agnostic)
+            # or the legacy `sherwebLicense` (kept for backwards compatibility with older forms).
+            $CspSku = $UserObj.cspLicense.value
+            if (-not $CspSku) { $CspSku = $UserObj.sherwebLicense.value }
+            if ($CspSku) {
+                $CspProvider = Get-CIPPCSPProvider -TenantFilter $UserObj.tenantFilter
+                if (-not $CspProvider) {
+                    throw "No CSP mapping (Pax8 or Sherweb) for tenant $($UserObj.tenantFilter); cannot order CSP license."
+                }
+                switch ($CspProvider) {
+                    'Pax8'    { $null = Set-Pax8Subscription    -Headers $Headers -TenantFilter $UserObj.tenantFilter -SKU $CspSku -Add 1 }
+                    'Sherweb' { $null = Set-SherwebSubscription -Headers $Headers -TenantFilter $UserObj.tenantFilter -SKU $CspSku -Add 1 }
+                }
+                $null = $Results.Add("Added $CspProvider License, scheduling assignment")
                 $taskObject = [PSCustomObject]@{
                     TenantFilter  = $UserObj.tenantFilter
                     Name          = "Assign License: $UserPrincipalName"
@@ -31,7 +42,7 @@ function New-CIPPUserTask {
                     }
                     Parameters    = [pscustomobject]@{
                         UserId      = $CreationResults.Username
-                        APIName     = 'Sherweb License Assignment'
+                        APIName     = "$CspProvider License Assignment"
                         AddLicenses = $UserObj.licenses.value
                     }
                     ScheduledTime = 0 #right now, which is in the next 15 minutes and should cover most cases.
