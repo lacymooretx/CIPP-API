@@ -134,32 +134,51 @@ function Sync-ITGlueUsers {
                 continue
             }
 
-            # ----- Contact upsert -----
-            $ExistingContact = $ExistingContacts | Where-Object {
-                $emails = @($_.attributes.'contact-emails')
-                $emails.value -contains $UPN
-            } | Select-Object -First 1
+            # ----- Contact upsert (separate try/catch so a failure doesn't block the Flex Asset) -----
+            try {
+                $ExistingContact = $ExistingContacts | Where-Object {
+                    $emails = @($_.attributes.'contact-emails')
+                    $emails.value -contains $UPN
+                } | Select-Object -First 1
 
-            $ContactPayload = @{
-                data = @{
-                    type       = 'contacts'
-                    attributes = @{
-                        'organization-id'  = [int]$OrgId
-                        'first-name'       = if ($User.givenName) { "$($User.givenName)" } else { ($UPN -split '@')[0] }
-                        'last-name'        = "$($User.surname)"
-                        'title'            = "$($User.jobTitle)"
-                        'contact-emails'   = @(@{ value = $UPN; primary = $true; 'label-name' = 'Work' })
+                $ContactPayload = @{
+                    data = @{
+                        type       = 'contacts'
+                        attributes = @{
+                            'organization-id'  = [int]$OrgId
+                            'first-name'       = if ($User.givenName) { "$($User.givenName)" } else { ($UPN -split '@')[0] }
+                            'last-name'        = "$($User.surname)"
+                            'title'            = "$($User.jobTitle)"
+                            'contact-emails'   = @(@{ value = $UPN; primary = $true; 'label-name' = 'Work' })
+                        }
                     }
                 }
-            }
-            if ($User.mobilePhone) {
-                $ContactPayload.data.attributes['contact-phones'] = @(@{ value = "$($User.mobilePhone)"; primary = $true; 'label-name' = 'Mobile' })
-            }
+                if ($User.mobilePhone) {
+                    $ContactPayload.data.attributes['contact-phones'] = @(@{ value = "$($User.mobilePhone)"; primary = $true; 'label-name' = 'Mobile' })
+                }
 
-            if ($ExistingContact) {
-                $null = Invoke-ITGlueRequest -Path "/contacts/$($ExistingContact.id)" -Method PATCH -Body $ContactPayload -Raw
-            } elseif ($CreateMissing) {
-                $null = Invoke-ITGlueRequest -Path "/organizations/$OrgId/relationships/contacts" -Method POST -Body $ContactPayload -Raw
+                if ($ExistingContact) {
+                    # PSA-synced contacts (e.g. ConnectWise) are owned by the integration; IT Glue rejects most attribute updates.
+                    # Leave the existing contact alone and rely on the Flex Asset to carry CIPP's M365 metadata.
+                    if ([string]::IsNullOrEmpty($ExistingContact.attributes.'psa-integration')) {
+                        $null = Invoke-ITGlueRequest -Path "/contacts/$($ExistingContact.id)" -Method PATCH -Body $ContactPayload -Raw
+                    } else {
+                        $CompanyResult.Logs.Add("Contact $UPN is PSA-synced ($($ExistingContact.attributes.'psa-integration')); not updating, Flex Asset will be written.")
+                    }
+                } elseif ($CreateMissing) {
+                    $null = Invoke-ITGlueRequest -Path "/organizations/$OrgId/relationships/contacts" -Method POST -Body $ContactPayload -Raw
+                }
+            } catch {
+                $cMsg = $_.Exception.Message
+                $cDetail = ''
+                try {
+                    if ($_.ErrorDetails -and $_.ErrorDetails.Message) {
+                        $Parsed = $_.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
+                        if ($Parsed.errors) { $cDetail = ' | ' + (($Parsed.errors | ForEach-Object { "$($_.title): $($_.detail)" }) -join '; ') }
+                    }
+                } catch {}
+                Write-LogMessage -API 'ITGlueSync' -tenant $Tenant.defaultDomainName -message "Contact upsert failed for ${UPN}: ${cMsg}${cDetail}" -sev Warning
+                # Do not rethrow — let the Flex Asset attempt continue.
             }
 
             # ----- Flex Asset upsert -----
@@ -360,6 +379,12 @@ enrolled-by:$($Device.userPrincipalName)
             if ($Device.model)        { $Payload.data.attributes['model-name']        = "$($Device.model)" }
 
             if ($Match) {
+                # PSA-synced configurations are owned by the integration; IT Glue only allows updating a small
+                # whitelist of attributes and rejects the rest. Skip the update entirely — ConnectWise wins.
+                if (-not [string]::IsNullOrEmpty($Match.attributes.'psa-integration')) {
+                    $CompanyResult.Logs.Add("Configuration $($Device.deviceName) is PSA-synced ($($Match.attributes.'psa-integration')); not updating.")
+                    continue
+                }
                 $null = Invoke-ITGlueRequest -Path "/configurations/$($Match.id)" -Method PATCH -Body $Payload -Raw
             } elseif ($CreateMissing) {
                 $null = Invoke-ITGlueRequest -Path "/organizations/$OrgId/relationships/configurations" -Method POST -Body $Payload -Raw
