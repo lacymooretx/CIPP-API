@@ -415,7 +415,10 @@ enrolled-by:$($Device.userPrincipalName)
 function Sync-ITGlueDomains {
     param($OrgId, $Tenant, $Cache, [bool]$Monitor, $CompanyResult)
 
-    $VerifiedDomains = $Cache.Domains | Where-Object { $_.isVerified -eq $true }
+    $VerifiedDomains = $Cache.Domains | Where-Object {
+        $_.isVerified -eq $true -and
+        $_.id -notmatch '\.smtp\.exclaimer\.cloud$'
+    }
     if (-not $VerifiedDomains) {
         $CompanyResult.Logs.Add('No verified M365 domains found; skipping domain sync.')
         return
