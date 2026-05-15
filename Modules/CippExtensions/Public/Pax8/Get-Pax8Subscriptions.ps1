@@ -59,6 +59,34 @@ function Get-Pax8Subscriptions {
         if (($i + 1) -ge $TotalPages) { break }
     }
 
+    # Enrich subs that came back from Pax8 with productName=null. Pax8's
+    # /v1/subscriptions endpoint omits productName for many older / vendor-
+    # specific rows. Fetch the partner catalog once (cached on $script: scope
+    # for the lifetime of this PS process) and resolve missing names from it.
+    if ($All | Where-Object { -not $_.productName }) {
+        if (-not $script:Pax8ProductNameMap) {
+            try {
+                $script:Pax8ProductNameMap = @{}
+                $Catalog = Get-Pax8Catalog
+                foreach ($p in $Catalog) {
+                    if ($p.id) { $script:Pax8ProductNameMap[[string]$p.id] = $p.productName }
+                }
+                Write-Information ("Pax8 catalog cache populated with {0} products" -f $script:Pax8ProductNameMap.Count)
+            } catch {
+                Write-Information "Pax8 catalog fetch for productName enrichment failed: $($_.Exception.Message)"
+                $script:Pax8ProductNameMap = @{}
+            }
+        }
+        foreach ($s in $All) {
+            if (-not $s.productName -and $s.productId) {
+                $key = [string]$s.productId
+                if ($script:Pax8ProductNameMap.ContainsKey($key)) {
+                    $s.productName = $script:Pax8ProductNameMap[$key]
+                }
+            }
+        }
+    }
+
     if ($SKU)         { return $All | Where-Object { $_.sku -eq $SKU -or $_.productId -eq $SKU } }
     if ($ProductName) { return $All | Where-Object { $_.productName -eq $ProductName } }
     return $All.ToArray()
