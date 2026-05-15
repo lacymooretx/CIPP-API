@@ -119,7 +119,8 @@ function Sync-ITGlueUsers {
     Initialize-ITGlueUserFlexAssetFields -FlexAssetTypeId $FlexAssetTypeId
 
     $ExistingContacts = Invoke-ITGlueRequest -Path "/organizations/$OrgId/relationships/contacts" -AllPages
-    $ExistingAssets = Invoke-ITGlueRequest -Path "/organizations/$OrgId/relationships/flexible_assets?filter[flexible-asset-type-id]=$FlexAssetTypeId" -AllPages
+    # IT Glue does not expose flexible_assets under /organizations/:id/relationships/. Use the top-level endpoint with filters.
+    $ExistingAssets = Invoke-ITGlueRequest -Path "/flexible_assets?filter[organization-id]=$OrgId&filter[flexible-asset-type-id]=$FlexAssetTypeId" -AllPages
 
     $LicensedUsers = $Cache.Users | Where-Object { $null -ne $_.assignedLicenses.skuId } | Sort-Object userPrincipalName
     $CompanyResult.Logs.Add("Found $(($LicensedUsers | Measure-Object).Count) licensed users")
