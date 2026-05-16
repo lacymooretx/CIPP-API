@@ -143,32 +143,61 @@ function Sync-ITGlueUsers {
                     $emails.value -contains $UPN
                 } | Select-Object -First 1
 
-                $ContactPayload = @{
-                    data = @{
-                        type       = 'contacts'
-                        attributes = @{
-                            'organization-id'  = [int]$OrgId
-                            'first-name'       = if ($User.givenName) { "$($User.givenName)" } else { ($UPN -split '@')[0] }
-                            'last-name'        = "$($User.surname)"
-                            'title'            = "$($User.jobTitle)"
-                            'contact-emails'   = @(@{ value = $UPN; primary = $true; 'label-name' = 'Work' })
-                        }
-                    }
-                }
-                if ($User.mobilePhone) {
-                    $ContactPayload.data.attributes['contact-phones'] = @(@{ value = "$($User.mobilePhone)"; primary = $true; 'label-name' = 'Mobile' })
-                }
+                $FirstName = if ($User.givenName) { "$($User.givenName)" } else { ($UPN -split '@')[0] }
+                $LastName  = "$($User.surname)"
+                $Title     = "$($User.jobTitle)"
 
                 if ($ExistingContact) {
-                    # PSA-synced contacts (e.g. ConnectWise) are owned by the integration; IT Glue rejects most attribute updates.
-                    # Leave the existing contact alone and rely on the Flex Asset to carry CIPP's M365 metadata.
-                    if ([string]::IsNullOrEmpty($ExistingContact.attributes.'psa-integration')) {
-                        $null = Invoke-ITGlueRequest -Path "/contacts/$($ExistingContact.id)" -Method PATCH -Body $ContactPayload -Raw
+                    # Two reasons IT Glue rejects writes to an existing contact:
+                    #   1. psa-integration='enabled' / sync-active=true  — the whole contact is
+                    #      owned by the PSA integration; IT Glue allows updates to a tiny subset
+                    #      of fields (important, notes). We skip the PATCH entirely.
+                    #   2. The contact-emails subresource is independently treated as "synced"
+                    #      even when the parent contact's psa-integration is null. PATCHing
+                    #      any contact-emails value fails with 422 "Cannot update a synced
+                    #      resource" at pointer /data/attributes/contact-emails.base. We work
+                    #      around that by simply not including contact-emails on PATCH — the
+                    #      email is already correct (we matched on it), and the other fields
+                    #      (first-name, last-name, title) update cleanly.
+                    $PsaLocked = (-not [string]::IsNullOrEmpty($ExistingContact.attributes.'psa-integration')) -or `
+                                  ($ExistingContact.attributes.'sync-active' -eq $true)
+                    if ($PsaLocked) {
+                        $CompanyResult.Logs.Add("Contact $UPN is PSA-synced; not updating, Flex Asset will be written.")
                     } else {
-                        $CompanyResult.Logs.Add("Contact $UPN is PSA-synced ($($ExistingContact.attributes.'psa-integration')); not updating, Flex Asset will be written.")
+                        $PatchPayload = @{
+                            data = @{
+                                type       = 'contacts'
+                                attributes = @{
+                                    'first-name' = $FirstName
+                                    'last-name'  = $LastName
+                                    'title'      = $Title
+                                }
+                            }
+                        }
+                        # contact-phones is independent of contact-emails and updates cleanly;
+                        # only set it if Graph actually has a mobile number.
+                        if ($User.mobilePhone) {
+                            $PatchPayload.data.attributes['contact-phones'] = @(@{ value = "$($User.mobilePhone)"; primary = $true; 'label-name' = 'Mobile' })
+                        }
+                        $null = Invoke-ITGlueRequest -Path "/contacts/$($ExistingContact.id)" -Method PATCH -Body $PatchPayload -Raw
                     }
                 } elseif ($CreateMissing) {
-                    $null = Invoke-ITGlueRequest -Path "/organizations/$OrgId/relationships/contacts" -Method POST -Body $ContactPayload -Raw
+                    $CreatePayload = @{
+                        data = @{
+                            type       = 'contacts'
+                            attributes = @{
+                                'organization-id' = [int]$OrgId
+                                'first-name'      = $FirstName
+                                'last-name'       = $LastName
+                                'title'           = $Title
+                                'contact-emails'  = @(@{ value = $UPN; primary = $true; 'label-name' = 'Work' })
+                            }
+                        }
+                    }
+                    if ($User.mobilePhone) {
+                        $CreatePayload.data.attributes['contact-phones'] = @(@{ value = "$($User.mobilePhone)"; primary = $true; 'label-name' = 'Mobile' })
+                    }
+                    $null = Invoke-ITGlueRequest -Path "/organizations/$OrgId/relationships/contacts" -Method POST -Body $CreatePayload -Raw
                 }
             } catch {
                 $cMsg = $_.Exception.Message
