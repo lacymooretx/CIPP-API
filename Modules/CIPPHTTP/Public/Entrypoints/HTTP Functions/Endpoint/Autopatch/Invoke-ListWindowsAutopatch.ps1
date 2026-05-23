@@ -21,12 +21,19 @@ function Invoke-ListWindowsAutopatch {
 
     $APIName = $Request.Params.CIPPEndpoint
     $Headers = $Request.Headers
-    $TenantFilter = $Request.Query.tenantFilter ?? $Request.body.tenantFilter
+    $TenantFilter = $Request.Query.tenantFilter ?? $Request.Query.TenantFilter ?? $Request.Body.tenantFilter ?? $Request.Body.TenantFilter
+
+    if ([string]::IsNullOrWhiteSpace($TenantFilter)) {
+        return ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::BadRequest
+                Body       = [PSCustomObject]@{ error = 'tenantFilter is required' }
+            })
+    }
 
     try {
-        $Policies   = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/updatePolicies'    -tenantid $TenantFilter -NoAuthCheck $true -ErrorAction Stop
-        $Audiences  = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/deploymentAudiences' -tenantid $TenantFilter -NoAuthCheck $true -ErrorAction Stop
-        $Assets     = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/updatableAssets'     -tenantid $TenantFilter -NoAuthCheck $true -ErrorAction Stop
+        $Policies = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/updatePolicies' -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true -ErrorAction Stop
+        $Audiences = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/deploymentAudiences' -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true -ErrorAction Stop
+        $Assets = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/updatableAssets' -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true -ErrorAction Stop
 
         $Body = [PSCustomObject]@{
             tenantFilter        = $TenantFilter
