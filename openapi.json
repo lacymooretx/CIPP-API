@@ -9,6 +9,328 @@
     "title": "CIPP-API Documentation"
   },
   "paths": {
+    "/ListWindowsAutopatch": {
+      "get": {
+        "description": "Returns Windows Autopatch update policies, deployment audiences, enrolled assets, and optional Intune managed device joins.",
+        "summary": "ListWindowsAutopatch",
+        "tags": ["GET", "Endpoint", "Autopatch"],
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "tenantFilter",
+            "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "includeManagedDevices",
+            "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "includeAudienceMembers",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
+    "/ListAutopatchEnrollmentStatus": {
+      "get": {
+        "description": "Returns Windows Autopatch enrollment status joined to Intune managed device inventory.",
+        "summary": "ListAutopatchEnrollmentStatus",
+        "tags": ["GET", "Endpoint", "Autopatch"],
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "tenantFilter",
+            "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "includeUnenrolled",
+            "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "deviceIds",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
+    "/EnrollAutopatchAsset": {
+      "post": {
+        "description": "Enrolls one or more Azure AD Windows device IDs into Windows Autopatch update management.",
+        "summary": "EnrollAutopatchAsset",
+        "tags": ["POST", "Endpoint", "Autopatch"],
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "tenantFilter",
+            "in": "body"
+          },
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "deviceIds",
+            "in": "body"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "categories",
+            "in": "body"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
+    "/ExecAutopatchUnenroll": {
+      "post": {
+        "description": "Unenrolls one or more Azure AD Windows device IDs from Windows Autopatch update management.",
+        "summary": "ExecAutopatchUnenroll",
+        "tags": ["POST", "Endpoint", "Autopatch"],
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "tenantFilter",
+            "in": "body"
+          },
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "deviceIds",
+            "in": "body"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "categories",
+            "in": "body"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
+    "/AddAutopatchRing": {
+      "post": {
+        "description": "Creates a Windows Autopatch deployment audience, adds devices as members, enrolls them, and creates update policies.",
+        "summary": "AddAutopatchRing",
+        "tags": ["POST", "Endpoint", "Autopatch"],
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "tenantFilter",
+            "in": "body"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "ringName",
+            "in": "body"
+          },
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "deviceIds",
+            "in": "body"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "categories",
+            "in": "body"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
+    "/ExecAutopatchOnboard": {
+      "post": {
+        "description": "Buckets Windows managed devices into Autopatch deployment audiences and creates update policies.",
+        "summary": "ExecAutopatchOnboard",
+        "tags": ["POST", "Endpoint", "Autopatch"],
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "tenantFilter",
+            "in": "body"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "categories",
+            "in": "body"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "name": "force",
+            "in": "body"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
+    "/RemoveAutopatchPolicy": {
+      "post": {
+        "description": "Deletes a Windows Autopatch update policy by ID.",
+        "summary": "RemoveAutopatchPolicy",
+        "tags": ["POST", "Endpoint", "Autopatch"],
+        "parameters": [
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "tenantFilter",
+            "in": "body"
+          },
+          {
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "name": "policyId",
+            "in": "body"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
     "/AddGroup": {
       "post": {
         "description": "AddGroup",

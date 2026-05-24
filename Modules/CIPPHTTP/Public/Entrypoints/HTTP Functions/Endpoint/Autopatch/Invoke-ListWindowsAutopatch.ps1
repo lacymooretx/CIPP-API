@@ -21,32 +21,13 @@ function Invoke-ListWindowsAutopatch {
 
     $APIName = $Request.Params.CIPPEndpoint
     $Headers = $Request.Headers
-    $TenantFilter = $Request.Query.tenantFilter ?? $Request.Query.TenantFilter ?? $Request.Body.tenantFilter ?? $Request.Body.TenantFilter
-
-    if ([string]::IsNullOrWhiteSpace($TenantFilter)) {
-        return ([HttpResponseContext]@{
-                StatusCode = [HttpStatusCode]::BadRequest
-                Body       = [PSCustomObject]@{ error = 'tenantFilter is required' }
-            })
-    }
 
     try {
-        $Policies = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/updatePolicies' -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true -ErrorAction Stop
-        $Audiences = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/deploymentAudiences' -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true -ErrorAction Stop
-        $Assets = New-GraphGetRequest -uri 'https://graph.microsoft.com/beta/admin/windows/updates/updatableAssets' -tenantid $TenantFilter -AsApp $true -NoAuthCheck $true -ErrorAction Stop
+        $TenantFilter = Get-CIPPAutopatchTenantFilter -Request $Request
+        $IncludeManagedDevices = ConvertTo-CIPPAutopatchBoolean -Value (Get-CIPPAutopatchRequestValue -Request $Request -Names @('includeManagedDevices', 'IncludeManagedDevices')) -Default $false
+        $IncludeAudienceMembers = ConvertTo-CIPPAutopatchBoolean -Value (Get-CIPPAutopatchRequestValue -Request $Request -Names @('includeAudienceMembers', 'IncludeAudienceMembers')) -Default $true
 
-        $Body = [PSCustomObject]@{
-            tenantFilter        = $TenantFilter
-            updatePolicies      = @($Policies)
-            deploymentAudiences = @($Audiences)
-            updatableAssets     = @($Assets)
-            summary             = @{
-                policyCount   = @($Policies).Count
-                audienceCount = @($Audiences).Count
-                assetCount    = @($Assets).Count
-                isEnrolled    = (@($Policies).Count -gt 0 -or @($Audiences).Count -gt 0)
-            }
-        }
+        $Body = Get-CIPPAutopatchState -TenantFilter $TenantFilter -IncludeManagedDevices:$IncludeManagedDevices -IncludeAudienceMembers:$IncludeAudienceMembers
         $StatusCode = [HttpStatusCode]::OK
     } catch {
         $ErrorMessage = Get-CippException -Exception $_

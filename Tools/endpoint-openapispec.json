@@ -25,6 +25,352 @@
     }
   },
   "paths": {
+    "/ListWindowsAutopatch": {
+      "get": {
+        "summary": "List Windows Autopatch",
+        "description": "Returns Windows Autopatch update policies, deployment audiences, enrolled assets, and optional Intune managed device joins.",
+        "tags": [
+          "Autopatch"
+        ],
+        "parameters": [
+          {
+            "name": "tenantFilter",
+            "in": "query",
+            "description": "The tenant to query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeManagedDevices",
+            "in": "query",
+            "description": "Include Intune managed device inventory and enrollment joins",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "includeAudienceMembers",
+            "in": "query",
+            "description": "Include deployment audience members and exclusions",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Autopatch state retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandardResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/ListAutopatchEnrollmentStatus": {
+      "get": {
+        "summary": "List Autopatch Enrollment Status",
+        "description": "Returns Windows Autopatch enrollment status joined to Intune managed device inventory.",
+        "tags": [
+          "Autopatch"
+        ],
+        "parameters": [
+          {
+            "name": "tenantFilter",
+            "in": "query",
+            "description": "The tenant to query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "includeUnenrolled",
+            "in": "query",
+            "description": "Include unenrolled Windows managed devices",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "deviceIds",
+            "in": "query",
+            "description": "Optional comma-separated, newline-separated, or JSON array of Azure AD device IDs, Intune device IDs, names, or serial numbers",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Enrollment status retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StandardResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/EnrollAutopatchAsset": {
+      "post": {
+        "summary": "Enroll Autopatch Asset",
+        "description": "Enrolls one or more Azure AD Windows device IDs into Windows Autopatch update management.",
+        "tags": [
+          "Autopatch"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantFilter",
+                  "deviceIds"
+                ],
+                "properties": {
+                  "tenantFilter": {
+                    "type": "string"
+                  },
+                  "deviceIds": {
+                    "type": "string",
+                    "description": "Comma-separated, newline-separated, or JSON array of Azure AD device IDs, Intune device IDs, names, or serial numbers"
+                  },
+                  "categories": {
+                    "type": "string",
+                    "description": "Comma-separated or JSON array. Supported values: driver, quality"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Assets enrolled successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/ExecAutopatchUnenroll": {
+      "post": {
+        "summary": "Unenroll Autopatch Asset",
+        "description": "Unenrolls one or more Azure AD Windows device IDs from Windows Autopatch update management.",
+        "tags": [
+          "Autopatch"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantFilter",
+                  "deviceIds"
+                ],
+                "properties": {
+                  "tenantFilter": {
+                    "type": "string"
+                  },
+                  "deviceIds": {
+                    "type": "string",
+                    "description": "Comma-separated, newline-separated, or JSON array of Azure AD device IDs, Intune device IDs, names, or serial numbers"
+                  },
+                  "categories": {
+                    "type": "string",
+                    "description": "Comma-separated or JSON array. Supported values: driver, quality"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Assets unenrolled successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/AddAutopatchRing": {
+      "post": {
+        "summary": "Add Autopatch Ring",
+        "description": "Creates a Windows Autopatch deployment audience, adds devices as members, enrolls them, and creates update policies.",
+        "tags": [
+          "Autopatch"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantFilter",
+                  "deviceIds"
+                ],
+                "properties": {
+                  "tenantFilter": {
+                    "type": "string"
+                  },
+                  "ringName": {
+                    "type": "string"
+                  },
+                  "deviceIds": {
+                    "type": "string",
+                    "description": "Comma-separated, newline-separated, or JSON array of Azure AD device IDs, Intune device IDs, names, or serial numbers"
+                  },
+                  "categories": {
+                    "type": "string",
+                    "description": "Comma-separated or JSON array. Supported values: driver, quality"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Ring created successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/ExecAutopatchOnboard": {
+      "post": {
+        "summary": "Onboard Autopatch Tenant",
+        "description": "Buckets Windows managed devices into Autopatch deployment audiences and creates update policies.",
+        "tags": [
+          "Autopatch"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantFilter"
+                ],
+                "properties": {
+                  "tenantFilter": {
+                    "type": "string"
+                  },
+                  "categories": {
+                    "type": "string",
+                    "description": "Comma-separated or JSON array. Supported values: driver, quality"
+                  },
+                  "force": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tenant onboarded successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "409": {
+            "description": "Autopatch configuration already exists"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/RemoveAutopatchPolicy": {
+      "post": {
+        "summary": "Remove Autopatch Policy",
+        "description": "Deletes a Windows Autopatch update policy by ID.",
+        "tags": [
+          "Autopatch"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tenantFilter",
+                  "policyId"
+                ],
+                "properties": {
+                  "tenantFilter": {
+                    "type": "string"
+                  },
+                  "policyId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Policy removed successfully"
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/ListApps": {
       "get": {
         "summary": "List Applications",
