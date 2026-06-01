@@ -6,6 +6,11 @@ function New-ConnectWiseTicket {
         $Client
     )
 
+    # ConnectWise ticket descriptions/notes are plain-text fields and do not render HTML.
+    # CIPP alert content arrives as a full MJML email document, so convert it to readable
+    # plain text before sending (otherwise the raw markup is dumped into the ticket - CW #54851).
+    $Description = ConvertFrom-CIPPHtmlToText -Html $Description
+
     $Table = Get-CIPPTable -TableName Extensionsconfig
     $Configuration = ((Get-CIPPAzDataTableEntity @Table).config | ConvertFrom-Json).ConnectWise
     $TicketTable = Get-CIPPTable -TableName 'PSATickets'
