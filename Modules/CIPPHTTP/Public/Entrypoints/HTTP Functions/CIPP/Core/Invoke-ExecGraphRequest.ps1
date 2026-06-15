@@ -18,7 +18,14 @@ function Invoke-ExecGraphRequest {
           Method                  - GET (default) | POST | PATCH | PUT | DELETE
           Version                 - 'beta' (default) | 'v1.0'  (ignored if Endpoint is a full URL)
           Body / GraphRequestBody - request body for write methods (object or JSON string)
-          AsApp                   - $true to force an application token instead of delegated
+          AsApp                   - application vs delegated token. DEFAULT $true (app-only).
+                                    App-only is the correct mode for automated tenant management:
+                                    it is governed by the SAM app permissions + GDAP roles, and has
+                                    no interactive user session, so it is NOT subject to the customer's
+                                    admin-user Conditional Access (phishing-resistant MFA / sign-in
+                                    frequency). That keeps those human controls fully enforced while CIPP
+                                    still works. Pass AsApp:$false ONLY for the rare op that genuinely
+                                    requires a delegated/user context.
           NoPagination / DisablePagination - $true to disable paging on GET
     #>
     [CmdletBinding()]
@@ -38,7 +45,11 @@ function Invoke-ExecGraphRequest {
 
     # Coerce loosely-typed flags (query values arrive as strings) without throwing.
     $TruthyValues = @($true, 'true', 'True', 1, '1', 'yes', 'on')
-    $AsApp = $AsAppRaw -in $TruthyValues
+    $FalsyValues = @($false, 'false', 'False', 0, '0', 'no', 'off')
+    # Default to app-only: automated tenant management must run as the application (SAM perms + GDAP),
+    # never as a delegated admin user — otherwise the customer's admin Conditional Access (phishing-
+    # resistant MFA / sign-in frequency) correctly blocks it. Only an explicit AsApp:$false uses delegated.
+    $AsApp = if ($AsAppRaw -in $FalsyValues) { $false } else { $true }
     $NoPagination = $NoPaginationRaw -in $TruthyValues
 
     $ValidMethods = @('GET', 'POST', 'PATCH', 'PUT', 'DELETE')
