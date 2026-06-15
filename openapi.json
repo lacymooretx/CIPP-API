@@ -4502,6 +4502,39 @@
         }
       }
     },
+    "/ExecExoRequest": {
+      "post": {
+        "description": "Generic Exchange Online cmdlet passthrough. Runs an arbitrary EXO/Compliance cmdlet against a single tenant via New-ExoRequest.",
+        "summary": "ExecExoRequest",
+        "tags": ["POST"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["TenantFilter", "Cmdlet"],
+                "properties": {
+                  "TenantFilter": { "type": "string" },
+                  "Cmdlet": { "type": "string", "description": "EXO cmdlet, e.g. Set-InboundConnector." },
+                  "CmdParams": { "type": "object", "description": "Cmdlet parameters, e.g. { Identity, EFSkipLastIP }." },
+                  "UseSystemMailbox": { "type": "boolean" },
+                  "Compliance": { "type": "boolean", "description": "Run against Security & Compliance PowerShell." },
+                  "Anchor": { "type": "string" },
+                  "Select": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": { "application/json": { "schema": { "properties": {}, "type": "object" } } },
+            "description": "Successful operation"
+          }
+        }
+      }
+    },
     "/ExecGraphRequest": {
       "get": {
         "description": "Read-capable generic Microsoft Graph passthrough (GET). Executes a Graph GET against a single tenant.",
