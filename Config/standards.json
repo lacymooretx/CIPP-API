@@ -4652,6 +4652,27 @@
     "recommendedBy": ["CIS"]
   },
   {
+    "name": "standards.SyncAppManagedDomains",
+    "cat": "SharePoint Standards",
+    "tag": ["CIS M365 5.0 (7.3.2)"],
+    "helpText": "Restricts the OneDrive Sync app so it only runs on computers joined to the specified AD domains (Graph admin/sharepoint/settings isUnmanagedSyncAppForTenantRestricted + allowedDomainGuidsForSyncApp). Requires the AD domain GUID(s) of the tenant's managed devices - leaving them empty would block the sync client on every device, so this standard refuses to remediate without at least one domain GUID.",
+    "docsDescription": "Sets `isUnmanagedSyncAppForTenantRestricted` to true and `allowedDomainGuidsForSyncApp` to the supplied list, the \"Allow syncing only on computers joined to specific domains\" control. Get the domain GUID(s) from the customer's on-prem AD (`(Get-ADDomain).ObjectGUID`). This is distinct from the `unmanagedSync` standard, which controls the Conditional-Access based browser access policy (`Set-SPOTenant -ConditionalAccessPolicy`). CIS M365 5.0 7.3.2.",
+    "addedComponent": [
+      {
+        "type": "textField",
+        "name": "standards.SyncAppManagedDomains.allowedDomainGuids",
+        "label": "Allowed AD domain GUID(s) for the Sync app (comma or newline separated)",
+        "required": true
+      }
+    ],
+    "label": "Restrict OneDrive Sync app to managed (domain-joined) devices",
+    "impact": "High Impact",
+    "impactColour": "danger",
+    "addedDate": "2026-06-15",
+    "powershellEquivalent": "Update-MgBetaAdminSharePointSetting / Set-SPOTenant -IsUnmanagedSyncAppForTenantRestricted",
+    "recommendedBy": ["CIS"]
+  },
+  {
     "name": "standards.sharingDomainRestriction",
     "cat": "SharePoint Standards",
     "tag": [
