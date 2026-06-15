@@ -1249,7 +1249,7 @@
     },
     "/EditExConnector": {
       "get": {
-        "description": "EditExConnector",
+        "description": "Edit an Exchange Online connector: toggle Enabled state and (Inbound only) Enhanced Filtering.",
         "summary": "EditExConnector",
         "tags": ["GET"],
         "parameters": [
@@ -1270,9 +1270,10 @@
             "in": "query"
           },
           {
-            "required": true,
+            "required": false,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": ["Enable", "Disable"]
             },
             "name": "state",
             "in": "query"
@@ -1280,12 +1281,96 @@
           {
             "required": true,
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": ["Inbound", "Outbound"]
             },
             "name": "Type",
             "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "name": "EFSkipLastIP",
+            "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma/newline separated IPs or CIDRs to skip (Inbound only)."
+            },
+            "name": "EFSkipIPs",
+            "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Comma/newline separated recipients EF applies to (Inbound only)."
+            },
+            "name": "EFUsers",
+            "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "name": "EFTestMode",
+            "in": "query"
           }
         ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      },
+      "post": {
+        "description": "Edit an Exchange Online connector: toggle Enabled state and (Inbound only) configure Enhanced Filtering for Connectors (skip listing) for 3rd-party mail gateways.",
+        "summary": "EditExConnector",
+        "tags": ["POST"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tenantFilter", "GUID", "Type"],
+                "properties": {
+                  "tenantFilter": { "type": "string" },
+                  "GUID": { "type": "string", "description": "Connector Identity." },
+                  "Type": { "type": "string", "enum": ["Inbound", "Outbound"] },
+                  "State": {
+                    "type": "string",
+                    "enum": ["Enable", "Disable"],
+                    "description": "Omit to leave Enabled state unchanged."
+                  },
+                  "EFSkipLastIP": { "type": "boolean", "description": "Inbound only. Mutually exclusive with EFSkipIPs." },
+                  "EFSkipIPs": {
+                    "description": "Inbound only. Array of IPs/CIDRs, or a comma/newline string.",
+                    "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "string" }]
+                  },
+                  "EFUsers": {
+                    "description": "Inbound only. Recipients EF applies to (empty = all). Array or comma/newline string.",
+                    "oneOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "string" }]
+                  },
+                  "EFTestMode": { "type": "boolean", "description": "Inbound only." }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
