@@ -4419,7 +4419,7 @@
     },
     "/ExecGraphRequest": {
       "get": {
-        "description": "ExecGraphRequest",
+        "description": "Read-capable generic Microsoft Graph passthrough (GET). Executes a Graph GET against a single tenant.",
         "summary": "ExecGraphRequest",
         "tags": ["GET"],
         "parameters": [
@@ -4440,7 +4440,25 @@
             "in": "query"
           },
           {
-            "required": true,
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "beta",
+              "enum": ["beta", "v1.0"]
+            },
+            "name": "Version",
+            "in": "query"
+          },
+          {
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            },
+            "name": "AsApp",
+            "in": "query"
+          },
+          {
+            "required": false,
             "schema": {
               "type": "string"
             },
@@ -4448,6 +4466,68 @@
             "in": "query"
           }
         ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        }
+      },
+      "post": {
+        "description": "Write-capable generic Microsoft Graph passthrough. Executes an arbitrary Graph request (GET/POST/PATCH/PUT/DELETE) against a single tenant. SuperAdmin only.",
+        "summary": "ExecGraphRequest",
+        "tags": ["POST"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["TenantFilter", "Endpoint"],
+                "properties": {
+                  "TenantFilter": {
+                    "type": "string",
+                    "description": "Tenant default domain or customer id."
+                  },
+                  "Endpoint": {
+                    "type": "string",
+                    "description": "Relative Graph path (e.g. 'users/{id}') or a full Graph URL."
+                  },
+                  "Method": {
+                    "type": "string",
+                    "default": "GET",
+                    "enum": ["GET", "POST", "PATCH", "PUT", "DELETE"]
+                  },
+                  "Version": {
+                    "type": "string",
+                    "default": "beta",
+                    "enum": ["beta", "v1.0"],
+                    "description": "Ignored when Endpoint is a full URL."
+                  },
+                  "Body": {
+                    "description": "Request body for write methods. Object or JSON string.",
+                    "oneOf": [{ "type": "object" }, { "type": "string" }]
+                  },
+                  "AsApp": {
+                    "type": "boolean",
+                    "description": "Force an application token instead of delegated."
+                  },
+                  "NoPagination": {
+                    "type": "boolean",
+                    "description": "Disable paging on GET."
+                  }
+                }
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {
