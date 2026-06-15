@@ -3,12 +3,14 @@ function Invoke-ExecGraphRequest {
     .FUNCTIONALITY
         Entrypoint
     .ROLE
-        CIPP.SuperAdmin.ReadWrite
+        CIPP.Core.ReadWrite
     .DESCRIPTION
         Write-capable generic Microsoft Graph passthrough. Executes an arbitrary Graph
         request (GET/POST/PATCH/PUT/DELETE) against a single tenant. This is the on-demand
         escape hatch for one-off reads and writes that do not yet have a dedicated CIPP
-        endpoint. Gated to SuperAdmin because it can reach any Graph endpoint with any method.
+        endpoint. Gated to CIPP.Core.ReadWrite (the write counterpart of ListGraphRequest's
+        CIPP.Core.Read); every mutating call is audited. It can reach any Graph endpoint with
+        any method, so the underlying SAM/GDAP permissions remain the real safety boundary.
 
         Parameters may be supplied via query string (GET-style) or request body (POST-style):
           TenantFilter (required) - tenant default domain or customer id
