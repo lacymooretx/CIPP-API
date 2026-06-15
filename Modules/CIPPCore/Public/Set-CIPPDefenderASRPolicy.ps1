@@ -53,20 +53,28 @@ function Set-CIPPDefenderASRPolicy {
         }
     }
 
+    # NOTE: This is emitted as a standalone Settings Catalog policy, NOT bound to the
+    # Endpoint Security "Attack Surface Reduction Rules" template (e8c053d6-...).
+    # When a policy carries that templateReference, Microsoft Graph requires EITHER every
+    # rule the template defines to be present in groupSettingCollectionValue.children, OR
+    # each child to include its own settingInstanceTemplateReference. Emitting a subset of
+    # rules under the template (the common case) therefore failed with
+    # "Property children in payload has a value that does not match schema."
+    # Dropping the template binding (and the group-level settingInstanceTemplateReference)
+    # makes any subset of rules valid while applying the identical ASR CSP settings. The
+    # child structure is unchanged, so Standards comparison/reads still parse it correctly.
     $ASRBodyObj = @{
-        name              = 'ASR Default rules'
-        description       = ''
-        platforms         = 'windows10'
-        technologies      = 'mdm,microsoftSense'
-        roleScopeTagIds   = @('0')
-        templateReference = @{templateId = 'e8c053d6-9f95-42b1-a7f1-ebfd71c67a4b_1' }
-        settings          = @(@{
+        name            = 'ASR Default rules'
+        description     = ''
+        platforms       = 'windows10'
+        technologies    = 'mdm,microsoftSense'
+        roleScopeTagIds = @('0')
+        settings        = @(@{
                 '@odata.type'   = '#microsoft.graph.deviceManagementConfigurationSetting'
                 settingInstance = @{
-                    '@odata.type'                    = '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance'
-                    settingDefinitionId              = 'device_vendor_msft_policy_config_defender_attacksurfacereductionrules'
-                    groupSettingCollectionValue      = @(@{children = $ASRSettings })
-                    settingInstanceTemplateReference = @{settingInstanceTemplateId = '19600663-e264-4c02-8f55-f2983216d6d7' }
+                    '@odata.type'               = '#microsoft.graph.deviceManagementConfigurationGroupSettingCollectionInstance'
+                    settingDefinitionId         = 'device_vendor_msft_policy_config_defender_attacksurfacereductionrules'
+                    groupSettingCollectionValue = @(@{children = $ASRSettings })
                 }
             })
     }
@@ -85,7 +93,7 @@ function Set-CIPPDefenderASRPolicy {
             if ($ASR.AssignTo -and $ASR.AssignTo -ne 'none') {
                 $AssignBody = if ($ASR.AssignTo -ne 'AllDevicesAndUsers') { '{"assignments":[{"id":"","target":{"@odata.type":"#microsoft.graph.' + $($ASR.AssignTo) + 'AssignmentTarget"}}]}' } else { '{"assignments":[{"id":"","target":{"@odata.type":"#microsoft.graph.allDevicesAssignmentTarget"}},{"id":"","target":{"@odata.type":"#microsoft.graph.allLicensedUsersAssignmentTarget"}}]}' }
                 $null = New-GraphPOSTRequest -uri "https://graph.microsoft.com/beta/deviceManagement/configurationPolicies('$($ASRRequest.id)')/assign" -tenantid $TenantFilter -type POST -body $AssignBody
-                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Assigned policy $($DisplayName) to $($ASR.AssignTo)" -Sev 'Info'
+                Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Assigned policy 'ASR Default rules' to $($ASR.AssignTo)" -Sev 'Info'
             }
             "$($TenantFilter): Successfully added ASR Settings"
         }
