@@ -32,6 +32,15 @@ function Invoke-ExecRestrictedSharePointSearch {
 
         # Read current tenant CSOM properties (gives us the _ObjectIdentity_ + current mode).
         $Tenant = Get-CIPPSPOTenant -TenantFilter $TenantFilter -SkipCache
+
+        # Diagnostic mode: surface every tenant property name + value that relates to search/restriction.
+        if ($Mode -eq 'Read') {
+            $Props = $Tenant.PSObject.Properties |
+                Where-Object { $_.Name -match 'search|restrict|copilot|coreSharing' } |
+                ForEach-Object { "$($_.Name)=$($_.Value)" }
+            return ([HttpResponseContext]@{ StatusCode = [HttpStatusCode]::OK; Body = @{ Results = "search/restrict properties: $($Props -join ' | ')"; AllPropertyNames = @($Tenant.PSObject.Properties.Name) } })
+        }
+
         $Before = $Tenant.RestrictedSearchMode
         $Identity = ([string]$Tenant._ObjectIdentity_) -replace "`n", '&#xA;'
 
@@ -40,10 +49,11 @@ function Invoke-ExecRestrictedSharePointSearch {
 <Request AddExpandoFieldTypeSuffix="true" SchemaVersion="15.0.0.0" LibraryVersion="16.0.0.0" ApplicationName="CIPP" xmlns="http://schemas.microsoft.com/sharepoint/clientquery/2009"><Actions><SetProperty Id="114" ObjectPathId="110" Name="RestrictedSearchMode"><Parameter Type="Enum">$ModeValue</Parameter></SetProperty></Actions><ObjectPaths><Identity Id="110" Name="$Identity" /></ObjectPaths></Request>
 "@
         $AdditionalHeaders = @{ 'Accept' = 'application/json;odata=verbose' }
-        $null = New-GraphPostRequest -scope "$AdminUrl/.default" -tenantid $TenantFilter -Uri "$AdminUrl/_vti_bin/client.svc/ProcessQuery" -Type POST -Body $XML -ContentType 'text/xml' -AddedHeaders $AdditionalHeaders
+        $CsomResponse = New-GraphPostRequest -scope "$AdminUrl/.default" -tenantid $TenantFilter -Uri "$AdminUrl/_vti_bin/client.svc/ProcessQuery" -Type POST -Body $XML -ContentType 'text/xml' -AddedHeaders $AdditionalHeaders
+        $CsomJson = try { $CsomResponse | ConvertTo-Json -Depth 6 -Compress } catch { "$CsomResponse" }
 
         $After = (Get-CIPPSPOTenant -TenantFilter $TenantFilter -SkipCache).RestrictedSearchMode
-        $Result = "Restricted SharePoint Search for ${TenantFilter}: before=$Before, requested=$Mode ($ModeValue), after=$After"
+        $Result = "Restricted SharePoint Search for ${TenantFilter}: before=$Before, requested=$Mode ($ModeValue), after=$After | CSOM: $CsomJson"
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -Sev 'Info'
         $StatusCode = [HttpStatusCode]::OK
     } catch {
