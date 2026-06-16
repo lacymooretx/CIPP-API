@@ -7,9 +7,14 @@ function Invoke-ExecRestrictedSharePointSearch {
     .DESCRIPTION
         Enable or disable Restricted SharePoint Search (the Microsoft 365 Copilot oversharing
         guardrail) via the SAM app's SharePoint admin CSOM path — the same authenticated path
-        Get-CIPPSPOTenant / Set-CIPPSPOTenant use. Equivalent to the SPO cmdlet
-        Set-SPOTenantRestrictedSearchMode -Mode Enabled|Disabled. RestrictedSearchMode is a
-        tenant CSOM enum property (0 = Disabled, 1 = Enabled).
+        Get-CIPPSPOTenant / Set-CIPPSPOTenant use. Equivalent to the cmdlet
+        Set-SPOTenantRestrictedSearchMode / Set-PnPTenantRestrictedSearchMode -Mode Enabled|Disabled.
+
+        IMPORTANT: RestrictedSearchMode is NOT a settable CSOM *property* on the Tenant object
+        (a SetProperty attempt returns 'Field or property "RestrictedSearchMode" does not exist').
+        It is applied by calling the Tenant *method* SetSPORestrictedSearchMode with an Enum
+        parameter (0 = Disabled, 1 = Enabled). This CSOM was captured from the real
+        Set-PnPTenantRestrictedSearchMode wire request and validated live against aspendora.com.
 
         Body/query params:
           TenantFilter (required)
@@ -30,30 +35,24 @@ function Invoke-ExecRestrictedSharePointSearch {
         $SharePointInfo = Get-SharePointAdminLink -Public $false -tenantFilter $TenantFilter
         $AdminUrl = $SharePointInfo.AdminUrl
 
-        # Read current tenant CSOM properties (gives us the _ObjectIdentity_ + current mode).
-        $Tenant = Get-CIPPSPOTenant -TenantFilter $TenantFilter -SkipCache
-
-        # Diagnostic mode: surface every tenant property name + value that relates to search/restriction.
-        if ($Mode -eq 'Read') {
-            $Props = $Tenant.PSObject.Properties |
-                Where-Object { $_.Name -match 'search|restrict|copilot|coreSharing' } |
-                ForEach-Object { "$($_.Name)=$($_.Value)" }
-            return ([HttpResponseContext]@{ StatusCode = [HttpStatusCode]::OK; Body = @{ Results = "search/restrict properties: $($Props -join ' | ')"; AllPropertyNames = @($Tenant.PSObject.Properties.Name) } })
-        }
-
-        $Before = $Tenant.RestrictedSearchMode
-        $Identity = ([string]$Tenant._ObjectIdentity_) -replace "`n", '&#xA;'
-
-        # CSOM SetProperty on the tenant enum property RestrictedSearchMode.
+        # Construct a fresh Tenant admin object (TypeId is the well-known SPO Tenant CSOM type)
+        # and invoke the SetSPORestrictedSearchMode method. The Enum parameter is the mode value.
         $XML = @"
-<Request AddExpandoFieldTypeSuffix="true" SchemaVersion="15.0.0.0" LibraryVersion="16.0.0.0" ApplicationName="CIPP" xmlns="http://schemas.microsoft.com/sharepoint/clientquery/2009"><Actions><SetProperty Id="114" ObjectPathId="110" Name="RestrictedSearchMode"><Parameter Type="Enum">$ModeValue</Parameter></SetProperty></Actions><ObjectPaths><Identity Id="110" Name="$Identity" /></ObjectPaths></Request>
+<Request AddExpandoFieldTypeSuffix="true" SchemaVersion="15.0.0.0" LibraryVersion="16.0.0.0" ApplicationName="CIPP" xmlns="http://schemas.microsoft.com/sharepoint/clientquery/2009"><Actions><ObjectPath Id="2" ObjectPathId="1" /><Method Name="SetSPORestrictedSearchMode" Id="3" ObjectPathId="1"><Parameters><Parameter Type="Enum">$ModeValue</Parameter></Parameters></Method></Actions><ObjectPaths><Constructor Id="1" TypeId="{268004ae-ef6b-4e9b-8425-127220d84719}" /></ObjectPaths></Request>
 "@
         $AdditionalHeaders = @{ 'Accept' = 'application/json;odata=verbose' }
         $CsomResponse = New-GraphPostRequest -scope "$AdminUrl/.default" -tenantid $TenantFilter -Uri "$AdminUrl/_vti_bin/client.svc/ProcessQuery" -Type POST -Body $XML -ContentType 'text/xml' -AddedHeaders $AdditionalHeaders
-        $CsomJson = try { $CsomResponse | ConvertTo-Json -Depth 6 -Compress } catch { "$CsomResponse" }
 
-        $After = (Get-CIPPSPOTenant -TenantFilter $TenantFilter -SkipCache).RestrictedSearchMode
-        $Result = "Restricted SharePoint Search for ${TenantFilter}: before=$Before, requested=$Mode ($ModeValue), after=$After | CSOM: $CsomJson"
+        # The ProcessQuery response is an array whose first element carries ErrorInfo (null = success).
+        $ErrorInfo = $null
+        foreach ($item in @($CsomResponse)) {
+            if ($null -ne $item -and $item.PSObject.Properties.Name -contains 'ErrorInfo') { $ErrorInfo = $item.ErrorInfo; break }
+        }
+        if ($ErrorInfo) {
+            throw "CSOM error setting Restricted SharePoint Search: $($ErrorInfo.ErrorMessage)"
+        }
+
+        $Result = "Restricted SharePoint Search for ${TenantFilter} set to $Mode ($ModeValue) — CSOM accepted (ErrorInfo: null)."
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message $Result -Sev 'Info'
         $StatusCode = [HttpStatusCode]::OK
     } catch {
