@@ -17,18 +17,20 @@ function Invoke-ExecRestrictedSharePointSearch {
         Set-PnPTenantRestrictedSearchMode wire request and validated live against aspendora.com.
 
         AUTH NOTE: the SharePoint admin CSOM endpoint (ProcessQuery) requires a SharePoint
-        *admin* token. The delegated GDAP token returns HTTP 401 for this method on managed
-        tenants (CIPP's identity is not a SharePoint admin there). The working path is APP-ONLY
-        with the SharePoint application permission Sites.FullControl.All on the SAM app
-        (validated live). Sites.FullControl.All is in SAMManifest.json; once consented + CPV-
-        pushed, every managed tenant's SAM SP carries it. AsApp therefore DEFAULTS TO $true.
-        Pass AsApp=$false only to force the (non-working) delegated path for diagnostics.
-        See CIPP-FLEET-AUTOMATION-GAPS.md.
+        *admin* token, obtained the same way every other CIPP SharePoint operation
+        (Get/Set-CIPPSPOTenant) does: the DELEGATED GDAP token. That token only works if the
+        managed tenant's GDAP relationship actually carries the **SharePoint Administrator**
+        role. If it does not (the role has 0 members in the customer tenant), this returns
+        HTTP 401. The fleet fix is to add SharePoint Administrator to CIPP's GDAP role set
+        (same pattern as Compliance Administrator) — NOT to add a SharePoint application
+        permission: SharePoint rejects CIPP's secret-based app-only token with
+        "Unsupported app only token" (app-only would require certificate auth). See
+        CIPP-FLEET-AUTOMATION-GAPS.md.
 
         Body/query params:
           TenantFilter (required)
           Mode         - 'Enabled' (default) | 'Disabled'
-          AsApp        - app-only SharePoint token (DEFAULT $true; requires SAM Sites.FullControl.All)
+          AsApp        - force app-only (diagnostic only; SharePoint rejects secret app-only)
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
@@ -37,9 +39,10 @@ function Invoke-ExecRestrictedSharePointSearch {
     $Headers = $Request.Headers
     $TenantFilter = $Request.Body.TenantFilter ?? $Request.Query.TenantFilter ?? $Request.Body.tenantFilter ?? $Request.Query.tenantFilter
     $Mode = ($Request.Body.Mode ?? $Request.Query.Mode ?? 'Enabled').ToString()
-    # App-only is the working path; default to it. Only an explicit AsApp=false uses delegated.
+    # Delegated GDAP is the working path (needs SharePoint Administrator in GDAP). AsApp is a
+    # diagnostic override only — SharePoint rejects CIPP's secret-based app-only token.
     $AsAppRaw = $Request.Body.AsApp ?? $Request.Query.AsApp
-    $AsApp = if ($null -eq $AsAppRaw) { $true } else { $AsAppRaw -in @($true, 'true', 'True', 1, '1', 'yes', 'on') }
+    $AsApp = $AsAppRaw -in @($true, 'true', 'True', 1, '1', 'yes', 'on')
 
     try {
         if (-not $TenantFilter) { throw 'TenantFilter is required.' }
