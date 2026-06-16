@@ -17,16 +17,18 @@ function Invoke-ExecRestrictedSharePointSearch {
         Set-PnPTenantRestrictedSearchMode wire request and validated live against aspendora.com.
 
         AUTH NOTE: the SharePoint admin CSOM endpoint (ProcessQuery) requires a SharePoint
-        *admin* token. The default (delegated GDAP) token returns HTTP 401 for this method on
-        managed tenants. App-only with the SharePoint application permission Sites.FullControl.All
-        is proven to work (validated live). The SAM app does not currently hold any SharePoint
-        application permission, so pass AsApp=$true only once SAM has been granted
-        Sites.FullControl.All on Office 365 SharePoint Online. See CIPP-FLEET-AUTOMATION-GAPS.md.
+        *admin* token. The delegated GDAP token returns HTTP 401 for this method on managed
+        tenants (CIPP's identity is not a SharePoint admin there). The working path is APP-ONLY
+        with the SharePoint application permission Sites.FullControl.All on the SAM app
+        (validated live). Sites.FullControl.All is in SAMManifest.json; once consented + CPV-
+        pushed, every managed tenant's SAM SP carries it. AsApp therefore DEFAULTS TO $true.
+        Pass AsApp=$false only to force the (non-working) delegated path for diagnostics.
+        See CIPP-FLEET-AUTOMATION-GAPS.md.
 
         Body/query params:
           TenantFilter (required)
           Mode         - 'Enabled' (default) | 'Disabled'
-          AsApp        - $true to use an app-only SharePoint token (requires SAM Sites.FullControl.All)
+          AsApp        - app-only SharePoint token (DEFAULT $true; requires SAM Sites.FullControl.All)
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
@@ -35,8 +37,9 @@ function Invoke-ExecRestrictedSharePointSearch {
     $Headers = $Request.Headers
     $TenantFilter = $Request.Body.TenantFilter ?? $Request.Query.TenantFilter ?? $Request.Body.tenantFilter ?? $Request.Query.tenantFilter
     $Mode = ($Request.Body.Mode ?? $Request.Query.Mode ?? 'Enabled').ToString()
+    # App-only is the working path; default to it. Only an explicit AsApp=false uses delegated.
     $AsAppRaw = $Request.Body.AsApp ?? $Request.Query.AsApp
-    $AsApp = $AsAppRaw -in @($true, 'true', 'True', 1, '1', 'yes', 'on')
+    $AsApp = if ($null -eq $AsAppRaw) { $true } else { $AsAppRaw -in @($true, 'true', 'True', 1, '1', 'yes', 'on') }
 
     try {
         if (-not $TenantFilter) { throw 'TenantFilter is required.' }
