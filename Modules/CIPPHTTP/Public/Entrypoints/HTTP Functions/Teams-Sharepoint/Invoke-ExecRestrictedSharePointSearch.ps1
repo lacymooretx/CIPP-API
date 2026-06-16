@@ -16,9 +16,17 @@ function Invoke-ExecRestrictedSharePointSearch {
         parameter (0 = Disabled, 1 = Enabled). This CSOM was captured from the real
         Set-PnPTenantRestrictedSearchMode wire request and validated live against aspendora.com.
 
+        AUTH NOTE: the SharePoint admin CSOM endpoint (ProcessQuery) requires a SharePoint
+        *admin* token. The default (delegated GDAP) token returns HTTP 401 for this method on
+        managed tenants. App-only with the SharePoint application permission Sites.FullControl.All
+        is proven to work (validated live). The SAM app does not currently hold any SharePoint
+        application permission, so pass AsApp=$true only once SAM has been granted
+        Sites.FullControl.All on Office 365 SharePoint Online. See CIPP-FLEET-AUTOMATION-GAPS.md.
+
         Body/query params:
           TenantFilter (required)
           Mode         - 'Enabled' (default) | 'Disabled'
+          AsApp        - $true to use an app-only SharePoint token (requires SAM Sites.FullControl.All)
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
@@ -27,6 +35,8 @@ function Invoke-ExecRestrictedSharePointSearch {
     $Headers = $Request.Headers
     $TenantFilter = $Request.Body.TenantFilter ?? $Request.Query.TenantFilter ?? $Request.Body.tenantFilter ?? $Request.Query.tenantFilter
     $Mode = ($Request.Body.Mode ?? $Request.Query.Mode ?? 'Enabled').ToString()
+    $AsAppRaw = $Request.Body.AsApp ?? $Request.Query.AsApp
+    $AsApp = $AsAppRaw -in @($true, 'true', 'True', 1, '1', 'yes', 'on')
 
     try {
         if (-not $TenantFilter) { throw 'TenantFilter is required.' }
@@ -41,7 +51,17 @@ function Invoke-ExecRestrictedSharePointSearch {
 <Request AddExpandoFieldTypeSuffix="true" SchemaVersion="15.0.0.0" LibraryVersion="16.0.0.0" ApplicationName="CIPP" xmlns="http://schemas.microsoft.com/sharepoint/clientquery/2009"><Actions><ObjectPath Id="2" ObjectPathId="1" /><Method Name="SetSPORestrictedSearchMode" Id="3" ObjectPathId="1"><Parameters><Parameter Type="Enum">$ModeValue</Parameter></Parameters></Method></Actions><ObjectPaths><Constructor Id="1" TypeId="{268004ae-ef6b-4e9b-8425-127220d84719}" /></ObjectPaths></Request>
 "@
         $AdditionalHeaders = @{ 'Accept' = 'application/json;odata=verbose' }
-        $CsomResponse = New-GraphPostRequest -scope "$AdminUrl/.default" -tenantid $TenantFilter -Uri "$AdminUrl/_vti_bin/client.svc/ProcessQuery" -Type POST -Body $XML -ContentType 'text/xml' -AddedHeaders $AdditionalHeaders
+        $PostParams = @{
+            scope         = "$AdminUrl/.default"
+            tenantid      = $TenantFilter
+            Uri           = "$AdminUrl/_vti_bin/client.svc/ProcessQuery"
+            Type          = 'POST'
+            Body          = $XML
+            ContentType   = 'text/xml'
+            AddedHeaders  = $AdditionalHeaders
+        }
+        if ($AsApp) { $PostParams.AsApp = $true }
+        $CsomResponse = New-GraphPostRequest @PostParams
 
         # The ProcessQuery response is an array whose first element carries ErrorInfo (null = success).
         $ErrorInfo = $null
