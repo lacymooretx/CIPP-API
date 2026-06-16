@@ -139,20 +139,7 @@ function Get-GraphToken($tenantid, $scope, $AsApp, $AppID, $AppSecret, $refreshT
     }
 
     try {
-        # Certificate-based app-only auth: when a SAM certificate is provisioned, authenticate the
-        # application with a signed JWT assertion (client_assertion) instead of the client secret.
-        # This is phishing-resistant and non-interactive. Strictly additive: when no certificate is
-        # configured Get-CIPPSamCertificate returns $null and we use the existing secret-based body,
-        # so existing deployments are unaffected until a cert is actually provisioned.
-        $SamCertificate = $null
-        if ($AuthBody.grant_type -eq 'client_credentials' -and $AuthBody.client_id -eq $env:ApplicationID) {
-            $SamCertificate = Get-CIPPSamCertificate
-        }
-        if ($SamCertificate) {
-            $AccessToken = Get-GraphTokenFromCert -TenantId $tenantid -AppId $env:ApplicationID -Scope $scope -Certificate $SamCertificate
-        } else {
-            $AccessToken = (Invoke-CIPPRestMethod -Method post -Uri "https://login.microsoftonline.com/$($tenantid)/oauth2/v2.0/token" -Body $Authbody -ContentType 'application/x-www-form-urlencoded' -ErrorAction Stop)
-        }
+        $AccessToken = (Invoke-CIPPRestMethod -Method post -Uri "https://login.microsoftonline.com/$($tenantid)/oauth2/v2.0/token" -Body $Authbody -ContentType 'application/x-www-form-urlencoded' -ErrorAction Stop)
         if ($null -eq $AccessToken.expires_on -and $AccessToken.expires_in) {
             $ExpiresOn = [int](Get-Date -UFormat %s -Millisecond 0) + $AccessToken.expires_in
             Add-Member -InputObject $AccessToken -NotePropertyName 'expires_on' -NotePropertyValue $ExpiresOn -Force
