@@ -52,11 +52,22 @@ function Invoke-ExecApproveAppConsentRequest {
 
         # 2. Split the pending scopes into Microsoft Graph delegated scopes (the common case we can
         #    grant app-only) and everything else (handled via the manual consent URL fallback).
-        $GraphSp = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/servicePrincipals(appId='$GraphAppId')?`$select=id,appId,oauth2PermissionScopes" -tenantid $TenantFilter
+        #    Use the collection ($filter) form so New-GraphGetRequest's .value extraction returns the
+        #    service principal with its oauth2PermissionScopes (the single-entity functional-key form
+        #    does not surface the property reliably through the helper).
+        $GraphSp = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/servicePrincipals?`$filter=appId eq '$GraphAppId'&`$select=appId,oauth2PermissionScopes" -tenantid $TenantFilter | Select-Object -First 1
         $GraphScopeValues = @($GraphSp.oauth2PermissionScopes.value)
 
-        $GraphScopes = @($PendingScopes | Where-Object { $GraphScopeValues -contains $_ })
-        $UnmappedScopes = @($PendingScopes | Where-Object { $GraphScopeValues -notcontains $_ })
+        if ($GraphScopeValues.Count -gt 0) {
+            $GraphScopes = @($PendingScopes | Where-Object { $GraphScopeValues -contains $_ })
+            $UnmappedScopes = @($PendingScopes | Where-Object { $GraphScopeValues -notcontains $_ })
+        } else {
+            # Could not enumerate Graph's published scopes; admin-consent-workflow pending scopes are
+            # delegated scopes (Microsoft Graph for sign-in apps), so grant them against Graph rather
+            # than spuriously forcing every request to the manual fallback.
+            $GraphScopes = @($PendingScopes)
+            $UnmappedScopes = @()
+        }
 
         $GrantResults = [System.Collections.Generic.List[string]]::new()
         $Granted = $false
