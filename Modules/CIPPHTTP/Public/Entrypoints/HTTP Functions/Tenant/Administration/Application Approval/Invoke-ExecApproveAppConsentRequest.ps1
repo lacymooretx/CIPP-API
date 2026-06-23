@@ -6,12 +6,13 @@ function Invoke-ExecApproveAppConsentRequest {
         Tenant.Application.ReadWrite
     .DESCRIPTION
         Approves a pending Entra admin consent request server-side (app-only via the CIPP-SAM
-        application) so a technician does not need to elevate to Global Administrator. It grants
-        tenant-wide admin consent (oauth2PermissionGrant, consentType = AllPrincipals) for the
-        requested application's delegated Microsoft Graph scopes by reusing Add-CIPPDelegatedPermission.
-        Scopes Microsoft does not allow to be granted app-only, or scopes published by a non-Graph
-        resource, are returned with the standard Entra consent URL as a manual fallback (no regression
-        from today's "Approve in Entra" deep-link behaviour).
+        application) so a technician does not need to elevate to Global Administrator. The admin
+        consent workflow captures delegated scopes; for sign-in applications the resource is
+        Microsoft Graph. This grants tenant-wide admin consent (oauth2PermissionGrant,
+        consentType = AllPrincipals) for the request's pending scopes against Microsoft Graph by
+        reusing Add-CIPPDelegatedPermission. If the app-only grant cannot be completed, the
+        standard Entra consent URL is returned as a manual fallback (no regression from today's
+        "Approve in Entra" deep-link behaviour).
     #>
     [CmdletBinding()]
     param($Request, $TriggerMetadata)
@@ -50,50 +51,30 @@ function Invoke-ExecApproveAppConsentRequest {
             throw "The consent request for '$AppDisplayName' has no pending scopes to grant (it may already be completed)."
         }
 
-        # 2. Split the pending scopes into Microsoft Graph delegated scopes (the common case we can
-        #    grant app-only) and everything else (handled via the manual consent URL fallback).
-        #    Use the collection ($filter) form so New-GraphGetRequest's .value extraction returns the
-        #    service principal with its oauth2PermissionScopes (the single-entity functional-key form
-        #    does not surface the property reliably through the helper).
-        $GraphSp = New-GraphGetRequest -uri "https://graph.microsoft.com/beta/servicePrincipals?`$filter=appId eq '$GraphAppId'&`$select=appId,oauth2PermissionScopes" -tenantid $TenantFilter | Select-Object -First 1
-        $GraphScopeValues = @($GraphSp.oauth2PermissionScopes.value)
-
-        if ($GraphScopeValues.Count -gt 0) {
-            $GraphScopes = @($PendingScopes | Where-Object { $GraphScopeValues -contains $_ })
-            $UnmappedScopes = @($PendingScopes | Where-Object { $GraphScopeValues -notcontains $_ })
-        } else {
-            # Could not enumerate Graph's published scopes; admin-consent-workflow pending scopes are
-            # delegated scopes (Microsoft Graph for sign-in apps), so grant them against Graph rather
-            # than spuriously forcing every request to the manual fallback.
-            $GraphScopes = @($PendingScopes)
-            $UnmappedScopes = @()
-        }
-
-        $GrantResults = [System.Collections.Generic.List[string]]::new()
-        $Granted = $false
-
-        # 3. Grant admin consent for the Graph delegated scopes by reusing the existing helper.
+        # 2. Grant tenant-wide admin consent for the pending delegated scopes against Microsoft Graph
+        #    (the resource for sign-in apps in the admin consent workflow). Reuse the existing helper:
         #    ApplicationId = the requested app (its SP becomes the oauth2PermissionGrant clientId);
         #    NoTranslateRequired = scopes are passed as literal scope names, not permission GUIDs.
-        if ($GraphScopes.Count -gt 0) {
-            $ResourceAccess = foreach ($Scope in $GraphScopes) { @{ id = $Scope; type = 'Scope' } }
-            $RequiredResourceAccess = @(
-                @{
-                    resourceAppId  = $GraphAppId
-                    resourceAccess = @($ResourceAccess)
-                }
-            )
-            $AddResult = Add-CIPPDelegatedPermission -ApplicationId $AppId -RequiredResourceAccess $RequiredResourceAccess -NoTranslateRequired $true -TenantFilter $TenantFilter
-            foreach ($Line in $AddResult) { $GrantResults.Add($Line) }
-            if (($AddResult -match 'Successfully') -or ($AddResult -match 'All delegated permissions exist')) {
-                $Granted = $true
+        $ResourceAccess = foreach ($Scope in $PendingScopes) { @{ id = $Scope; type = 'Scope' } }
+        $RequiredResourceAccess = @(
+            @{
+                resourceAppId  = $GraphAppId
+                resourceAccess = @($ResourceAccess)
             }
+        )
+
+        $GrantResults = [System.Collections.Generic.List[string]]::new()
+        $AddResult = Add-CIPPDelegatedPermission -ApplicationId $AppId -RequiredResourceAccess $RequiredResourceAccess -NoTranslateRequired $true -TenantFilter $TenantFilter
+        foreach ($Line in $AddResult) { $GrantResults.Add($Line) }
+        $Granted = $false
+        if (($AddResult -match 'Successfully') -or ($AddResult -match 'All delegated permissions exist')) {
+            $Granted = $true
         }
 
-        # 4. Manual fallback URL when some scopes are non-Graph, or the app-only grant did not succeed.
-        $NeedsManual = ($UnmappedScopes.Count -gt 0) -or ($GraphScopes.Count -gt 0 -and -not $Granted)
+        # 3. Manual fallback URL if the app-only grant did not succeed (e.g. Microsoft blocks app-only
+        #    consent for one of the requested scopes, or a non-Graph resource is involved).
         $ConsentUrl = $null
-        if ($NeedsManual) {
+        if (-not $Granted) {
             $ScopeString = ($PendingScopes -join ' ')
             if ($ConsentRequest.consentType -eq 'Static') {
                 $ConsentUrl = "https://login.microsoftonline.com/$TenantFilter/adminConsent?client_id=$AppId&redirect_uri=https://entra.microsoft.com/TokenAuthorize"
@@ -102,7 +83,7 @@ function Invoke-ExecApproveAppConsentRequest {
             }
         }
 
-        # 5. Best-effort re-read of the request status (granting consent does not always flip the
+        # 4. Best-effort re-read of the request status (granting consent does not always flip the
         #    workflow request to Completed via the API; surface whatever Graph reports).
         $FinalStatus = $null
         try {
@@ -112,27 +93,24 @@ function Invoke-ExecApproveAppConsentRequest {
             # non-fatal
         }
 
-        # 6. Compose response message + audit log.
+        # 5. Compose response message + audit log.
         $Messages = [System.Collections.Generic.List[string]]::new()
         if ($Granted) {
-            $Messages.Add("Granted admin consent for '$AppDisplayName' (scopes: $($GraphScopes -join ', ')) in tenant $TenantFilter. Ask the user to sign in again.")
+            $Messages.Add("Granted admin consent for '$AppDisplayName' (scopes: $($PendingScopes -join ', ')) in tenant $TenantFilter. Ask the user to sign in again.")
+        } else {
+            $Messages.Add("Could not grant admin consent for '$AppDisplayName' server-side. Use the consent URL provided to approve in Entra.")
         }
         foreach ($Line in $GrantResults) { $Messages.Add($Line) }
-        if ($UnmappedScopes.Count -gt 0) {
-            $Messages.Add("The following scopes could not be granted automatically and need manual approval in Entra: $($UnmappedScopes -join ', '). Use the consent URL provided.")
-        } elseif ($NeedsManual) {
-            $Messages.Add('The automatic grant did not complete. Use the consent URL provided to approve in Entra.')
-        }
 
-        $Severity = if ($Granted -and -not $NeedsManual) { 'Info' } else { 'Warning' }
-        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "App consent approval for '$AppDisplayName' ($AppId) - granted: [$($GraphScopes -join ' ')]; manual fallback: [$($UnmappedScopes -join ' ')]" -Sev $Severity
+        $Severity = if ($Granted) { 'Info' } else { 'Warning' }
+        Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "App consent approval for '$AppDisplayName' ($AppId) - granted: $Granted; scopes: [$($PendingScopes -join ' ')]" -Sev $Severity
 
         $Results = [PSCustomObject]@{
             Results        = ($Messages -join ' ')
             AppId          = $AppId
             AppDisplayName = $AppDisplayName
-            GrantedScopes  = $GraphScopes
-            ManualScopes   = $UnmappedScopes
+            Granted        = $Granted
+            GrantedScopes  = $(if ($Granted) { $PendingScopes } else { @() })
             RequestStatus  = $FinalStatus
             ConsentUrl     = $ConsentUrl
         }
