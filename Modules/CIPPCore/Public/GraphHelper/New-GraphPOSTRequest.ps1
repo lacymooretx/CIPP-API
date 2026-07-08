@@ -44,6 +44,16 @@ function New-GraphPOSTRequest {
             $contentType = 'application/json; charset=utf-8'
         }
 
+        # (F) Graph quirk: on beta, `authorizationPolicy` is exposed as a collection, so PATCHing the
+        #     bare singleton `/beta/policies/authorizationPolicy` returns "Specified HTTP method is not
+        #     allowed for the request target". The v1.0 singleton accepts PATCH. Reroute bare-singleton
+        #     beta PATCHes to v1.0. The `/authorizationPolicy/authorizationPolicy` child form used by the
+        #     standards works on beta and is intentionally left untouched (only the bare path matches).
+        if ($type -eq 'PATCH' -and $uri -match '^https://graph\.microsoft\.com/beta/policies/authorizationPolicy(\?.*)?$') {
+            $uri = $uri -replace '^https://graph\.microsoft\.com/beta/', 'https://graph.microsoft.com/v1.0/'
+            Write-Information 'Rerouting authorizationPolicy PATCH from beta to v1.0 (beta rejects PATCH on the bare singleton).'
+        }
+
         $RetryCount = 0
         $RequestSuccessful = $false
         $RawErrorBody = $null
