@@ -48,6 +48,35 @@ function New-ExoRequest {
         } else {
             $Params = @{}
         }
+
+        # (C) Per-mailbox EXO cmdlets must be routed (anchored) to the target mailbox's home
+        #     server, otherwise EXO returns CmdletProxyNotAvailableException
+        #     ("Cmdlet needs proxy ... Required Server FQDN ..."). When the caller didn't pass
+        #     an explicit -Anchor, anchor to the target mailbox (Identity/Mailbox) for these.
+        $PerMailboxCmdlets = @(
+            'Set-Mailbox', 'Set-CASMailbox', 'Set-MailboxAuditBypassAssociation',
+            'Set-MailboxAutoReplyConfiguration', 'Set-MailboxMessageConfiguration',
+            'Set-MailboxRegionalConfiguration', 'Set-MailboxCalendarConfiguration',
+            'Set-Clutter', 'Set-FocusedInbox', 'Set-CalendarProcessing'
+        )
+        if (-not $Anchor -and $cmdlet -in $PerMailboxCmdlets) {
+            $TargetMailbox = if ($Params.Identity) { $Params.Identity } elseif ($Params.Mailbox) { $Params.Mailbox }
+            if ($TargetMailbox) { $Anchor = "$TargetMailbox" }
+        }
+
+        # (B) A few "void setter" cmdlets return their full config object on the write path.
+        #     For Set-OrganizationConfig that object includes the compressed OrganizationConfigHash
+        #     blob, which the REST round-trip can't decode ("The archive entry was compressed using
+        #     an unsupported compression method") — so the write succeeds but deserialising the
+        #     response throws. Project the response down to a harmless property so the blob is
+        #     never returned. Extend this map for any other cmdlet that hits the same decode error.
+        $VoidSetterProjection = @{
+            'Set-OrganizationConfig' = 'Identity'
+        }
+        if (-not $Select -and $VoidSetterProjection.ContainsKey($cmdlet)) {
+            $Select = $VoidSetterProjection[$cmdlet]
+        }
+
         $ExoBody = ConvertTo-Json -Depth 20 -Compress -InputObject @{
             CmdletInput = @{
                 CmdletName = $cmdlet
@@ -160,6 +189,13 @@ function New-ExoRequest {
                     } elseif ($ReportedError.error.message) { $ReportedError.error.message }
                 } catch { $Message = $_.ErrorDetails }
                 if ($null -eq $Message) { $Message = $ErrorMess }
+                # (B) For void setters, the write applied server-side; only decoding the compressed
+                #     response blob failed. Don't surface that as a failure. The $Select projection
+                #     above should normally prevent it; this is a fallback if the cmdlet ignores it.
+                if ($Message -match 'unsupported compression method' -and $VoidSetterProjection.ContainsKey($cmdlet)) {
+                    Write-Information "EXO $cmdlet applied; suppressing benign response-decode error (compressed config blob on return path)."
+                    return
+                }
                 throw $Message
             }
             return $ReturnedData.value
