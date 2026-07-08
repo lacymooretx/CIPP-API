@@ -33,7 +33,30 @@ function Invoke-AddWin32ScriptApp {
     $AppName = if ($Win32ScriptApp.ApplicationName) { $Win32ScriptApp.ApplicationName } else { $Win32ScriptApp.applicationName }
 
     $AllowedTenants = Test-CIPPAccess -Request $Request -TenantList
-    $Tenants = ($Request.Body.selectedTenants | Where-Object { $AllowedTenants -contains $_.customerId -or $AllowedTenants -contains 'AllTenants' }).defaultDomainName
+
+    # Resolve target tenants. Historically this only honored the multi-tenant `selectedTenants`
+    # array supplied by the CIPP UI. Callers using the standard single-tenant `TenantFilter`
+    # (the API / MCP, like every other endpoint) resolved to zero tenants and got a silent
+    # 200 { Results: null } no-op with nothing logged. Honor both inputs.
+    if ($Request.Body.selectedTenants) {
+        $Tenants = ($Request.Body.selectedTenants | Where-Object { $AllowedTenants -contains $_.customerId -or $AllowedTenants -contains 'AllTenants' }).defaultDomainName
+    } else {
+        $TenantFilter = $Request.Body.tenantFilter ?? $Request.Query.tenantFilter ?? $Request.Query.TenantFilter
+        if ($TenantFilter) {
+            $ResolvedTenant = Get-Tenants -IncludeErrors | Where-Object { $_.defaultDomainName -eq $TenantFilter -or $_.customerId -eq $TenantFilter }
+            if ($ResolvedTenant -and ($AllowedTenants -contains 'AllTenants' -or $AllowedTenants -contains $ResolvedTenant.customerId)) {
+                $Tenants = @($ResolvedTenant.defaultDomainName)
+            }
+        }
+    }
+
+    # Fail loudly instead of the previous silent 200 { Results: null } when no tenant resolved.
+    if (-not $Tenants) {
+        return ([HttpResponseContext]@{
+                StatusCode = [HttpStatusCode]::BadRequest
+                Body       = @{ Results = @('No target tenant resolved. Provide `selectedTenants` (array of {customerId, defaultDomainName}) or a `TenantFilter`, and ensure you have access to it.') }
+            })
+    }
 
     $Results = foreach ($Tenant in $Tenants) {
         try {
