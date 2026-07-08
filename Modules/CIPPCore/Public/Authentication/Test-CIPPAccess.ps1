@@ -96,8 +96,19 @@ function Test-CIPPAccess {
                         }
                     }
                     $BaseRole = $null
+                    # Mirror the User branch: superadmin/admin are authoritative base roles and must
+                    # resolve regardless of any custom roles or the order of properties in
+                    # cipp-roles.json. Without this, an API client with base role 'superadmin' relied
+                    # on 'superadmin' being the last-matching property to resolve (and historically
+                    # self-locked when it wasn't a defined base role at all).
+                    $EffectiveClientRoles = $Client.Role
+                    if ($Client.Role -contains 'superadmin') {
+                        $EffectiveClientRoles = @('superadmin')
+                    } elseif ($Client.Role -contains 'admin') {
+                        $EffectiveClientRoles = @('admin')
+                    }
                     foreach ($Role in $script:CIPPBaseRoles.PSObject.Properties) {
-                        foreach ($ClientRole in $Client.Role) {
+                        foreach ($ClientRole in $EffectiveClientRoles) {
                             if ($Role.Name -eq $ClientRole) {
                                 $BaseRole = $Role
                                 break
