@@ -80,12 +80,20 @@ function Set-CIPPSPOTenant {
             $x = 114
             foreach ($Property in $Properties.Keys) {
                 # Get property type
-                $PropertyType = $Properties[$Property].GetType().Name
+                $PropertyValue = $Properties[$Property]
+                $PropertyType = $PropertyValue.GetType().Name
+                # JSON integers arrive as Int64 (e.g. ConvertFrom-Json -AsHashtable in ExecCippFunction).
+                # SPO CSOM expects Int32, and Int64 wasn't in $AllowedTypes, so integer properties
+                # (e.g. EmailAttestationReAuthDays) were silently dropped. Coerce Int64 -> Int32.
+                if ($PropertyType -eq 'Int64') {
+                    $PropertyValue = [int32]$PropertyValue
+                    $PropertyType = 'Int32'
+                }
                 if ($PropertyType -in $AllowedTypes) {
                     if ($PropertyType -eq 'Boolean') {
-                        $PropertyToSet = $Properties[$Property].ToString().ToLower()
+                        $PropertyToSet = $PropertyValue.ToString().ToLower()
                     } else {
-                        $PropertyToSet = $Properties[$Property]
+                        $PropertyToSet = $PropertyValue
                     }
                     $xml = @"
     <SetProperty Id="$x" ObjectPathId="110" Name="$Property">
