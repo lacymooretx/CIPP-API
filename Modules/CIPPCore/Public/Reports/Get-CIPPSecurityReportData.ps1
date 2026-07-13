@@ -126,6 +126,21 @@ function Get-CIPPSecurityReportData {
         Add-Section 'Conditional Access Policies' 'info' "$($ca.Count) policies, $($enabled.Count) enabled." @('Name', 'State', 'Created', 'Modified') $r
     }
 
+    # ---- Microsoft Secure Score ---------------------------------------------------
+    Invoke-Section 'Microsoft Secure Score' {
+        $ss = New-GraphGetRequest -uri "$GraphBeta/security/secureScores?`$top=1" -tenantid $TenantFilter | Select-Object -First 1
+        $cur = [double]($ss.currentScore); $max = [double]($ss.maxScore)
+        $pct = if ($max -gt 0) { [math]::Round(100 * $cur / $max) } else { 0 }
+        $st = if ($pct -ge 70) { 'pass' } elseif ($pct -ge 40) { 'warn' } else { 'fail' }
+        Add-Finding 'Microsoft Secure Score' $st "$pct% ($([math]::Round($cur))/$([math]::Round($max)) points)."
+        $controls = @($ss.controlScores) | Sort-Object { [double]($_.scoreInPercentage) }
+        $r = New-RowList
+        foreach ($c in ($controls | Select-Object -First 20)) {
+            $r.Add(@($c.controlName, $c.controlCategory, "$([math]::Round([double]$c.scoreInPercentage))%", $c.implementationStatus))
+        }
+        Add-Section 'Microsoft Secure Score' $st "$pct% of max ($([math]::Round($cur))/$([math]::Round($max))). Lowest-scoring controls (top improvement opportunities) first." @('Control', 'Category', 'Score', 'Status') $r 'Secure Score data unavailable.'
+    }
+
     # ---- Authentication methods ---------------------------------------------------
     Invoke-Section 'Authentication Methods' {
         $amp = New-GraphGetRequest -uri "$GraphBeta/policies/authenticationMethodsPolicy" -tenantid $TenantFilter
