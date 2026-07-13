@@ -39,7 +39,7 @@ function Push-ExecReport {
                 ResolvedFail = @($PrevFail | Where-Object { $_ -notin $CurFailTitles }).Count
             }
         }
-    } catch { Write-Information "Report history read skipped: $($_.Exception.Message)" }
+    } catch { Write-LogMessage -API 'ReportHistory' -message "history read: $($_.Exception.Message)" -Sev 'Error' }
 
     $Html = Write-CippReportHtml -Report $Model
 
@@ -63,7 +63,7 @@ function Push-ExecReport {
             Date         = $Now.ToString('o')
             DateUnix     = [int64]($Now.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds
         } -Force | Out-Null
-    } catch { Write-Information "Report history write skipped: $($_.Exception.Message)" }
+    } catch { Write-LogMessage -API 'ReportHistory' -message "history write: $($_.Exception.Message)" -Sev 'Error' }
 
     $Bytes = [System.Text.Encoding]::UTF8.GetBytes($Html)
     $Base64 = [Convert]::ToBase64String($Bytes)
