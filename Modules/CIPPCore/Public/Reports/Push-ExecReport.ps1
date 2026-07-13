@@ -21,7 +21,49 @@ function Push-ExecReport {
     )
 
     $Model = Get-CIPPReportData -TenantFilter $TenantFilter -ReportType $ReportType
+
+    # ---- history + trend (best-effort; never blocks report generation) ------------
+    $Score = Get-CippReportScore -Findings $Model.Findings
+    $CurFailTitles = @(@($Model.Findings) | Where-Object { "$($_.Status)".ToLower() -eq 'fail' } | ForEach-Object { $_.Title })
+    try {
+        $HistTable = Get-CIPPTable -TableName 'CippReportHistory'
+        $Prev = Get-CIPPAzDataTableEntity @HistTable -Filter "PartitionKey eq '$TenantFilter' and ReportType eq '$ReportType'" |
+            Sort-Object { [int64]$_.DateUnix } -Descending | Select-Object -First 1
+        if ($Prev -and $Score.Scored) {
+            $PrevFail = @()
+            try { $PrevFail = @(($Prev.FailTitles | ConvertFrom-Json)) } catch {}
+            $Model.Trend = @{
+                PrevScore    = [int]$Prev.Score
+                PrevDate     = ([datetime]$Prev.Date).ToString('dd MMM yyyy')
+                NewFail      = @($CurFailTitles | Where-Object { $_ -notin $PrevFail }).Count
+                ResolvedFail = @($PrevFail | Where-Object { $_ -notin $CurFailTitles }).Count
+            }
+        }
+    } catch { Write-Information "Report history read skipped: $($_.Exception.Message)" }
+
     $Html = Write-CippReportHtml -Report $Model
+
+    # persist this run
+    try {
+        $HistTable = Get-CIPPTable -TableName 'CippReportHistory'
+        $Now = Get-Date
+        Add-CIPPAzDataTableEntity @HistTable -Entity @{
+            PartitionKey = "$TenantFilter"
+            RowKey       = "$ReportType-$([guid]::NewGuid().ToString())"
+            Tenant       = "$TenantFilter"
+            TenantName   = "$($Model.TenantName)"
+            ReportType   = "$ReportType"
+            Title        = "$($Model.Title)"
+            Score        = [int]$Score.Score
+            Grade        = "$($Score.Grade)"
+            Fail         = [int]$Score.Fail
+            Warn         = [int]$Score.Warn
+            Pass         = [int]$Score.Pass
+            FailTitles   = ($CurFailTitles | ConvertTo-Json -Compress)
+            Date         = $Now.ToString('o')
+            DateUnix     = [int64]($Now.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds
+        } -Force | Out-Null
+    } catch { Write-Information "Report history write skipped: $($_.Exception.Message)" }
 
     $Bytes = [System.Text.Encoding]::UTF8.GetBytes($Html)
     $Base64 = [Convert]::ToBase64String($Bytes)

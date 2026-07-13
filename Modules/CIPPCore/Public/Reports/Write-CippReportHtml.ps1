@@ -110,21 +110,28 @@ function Write-CippReportHtml {
         "<div><div class='t'>$(_enc $f.Title)</div><div class='d'>$(_enc $f.Detail)</div></div></div>"
     }
 
-    # ---- executive risk score / grade (from findings) -----------------------------
-    $sList = @($cards | ForEach-Object { _st $_.Status })
-    $failN = @($sList | Where-Object { $_ -eq 'fail' }).Count
-    $warnN = @($sList | Where-Object { $_ -eq 'warn' }).Count
-    $passN = @($sList | Where-Object { $_ -eq 'pass' }).Count
+    # ---- executive risk score / grade + trend (from findings) ---------------------
+    $sc = Get-CippReportScore -Findings $Report.Findings
     $heroHtml = ''
-    if (($failN + $warnN + $passN) -gt 0) {
-        $score = [math]::Max(0, 100 - ($failN * 15) - ($warnN * 5))
-        $grade = if ($score -ge 90) { 'A' } elseif ($score -ge 80) { 'B' } elseif ($score -ge 70) { 'C' } elseif ($score -ge 60) { 'D' } else { 'F' }
-        $band = if ($score -ge 80) { 'ok' } elseif ($score -ge 60) { 'warn' } else { 'bad' }
-        $heroHtml = "<div class='hero hero-$band'><div class='hero-ring'><div class='hero-grade'>$grade</div>" +
-        "<div class='hero-score'>$score<span>/100</span></div></div>" +
+    if ($sc.Scored) {
+        $band = if ($sc.Score -ge 80) { 'ok' } elseif ($sc.Score -ge 60) { 'warn' } else { 'bad' }
+        $trendChip = ''
+        if ($Report.Trend -and $null -ne $Report.Trend.PrevScore) {
+            $delta = [int]$sc.Score - [int]$Report.Trend.PrevScore
+            $arrow = if ($delta -gt 0) { '&#9650;' } elseif ($delta -lt 0) { '&#9660;' } else { '&#8212;' }
+            $tcls = if ($delta -gt 0) { 'hs-ok' } elseif ($delta -lt 0) { 'hs-bad' } else { 'mut' }
+            $sign = if ($delta -ge 0) { "+$delta" } else { "$delta" }
+            $trendChip = "<div class='hero-trend'><span class='$tcls'>$arrow $sign pts</span> since last report ($(_enc $Report.Trend.PrevDate))"
+            if ($null -ne $Report.Trend.NewFail -or $null -ne $Report.Trend.ResolvedFail) {
+                $trendChip += " &#183; <span class='hs-bad'>$([int]$Report.Trend.NewFail) new</span> / <span class='hs-ok'>$([int]$Report.Trend.ResolvedFail) resolved</span> action items"
+            }
+            $trendChip += "</div>"
+        }
+        $heroHtml = "<div class='hero hero-$band'><div class='hero-ring'><div class='hero-grade'>$($sc.Grade)</div>" +
+        "<div class='hero-score'>$($sc.Score)<span>/100</span></div></div>" +
         "<div class='hero-txt'><div class='hero-h'>Security posture</div>" +
-        "<div class='hero-sub'><span class='hs-bad'>$failN action</span> &#183; <span class='hs-warn'>$warnN to review</span> &#183; <span class='hs-ok'>$passN passing</span></div>" +
-        "<div class='hero-note'>Weighted from this report's checks; higher is better.</div></div></div>"
+        "<div class='hero-sub'><span class='hs-bad'>$($sc.Fail) action</span> &#183; <span class='hs-warn'>$($sc.Warn) to review</span> &#183; <span class='hs-ok'>$($sc.Pass) passing</span></div>" +
+        "$trendChip<div class='hero-note'>Weighted from this report's checks; higher is better.</div></div></div>"
     }
 
     # ---- toc + sections -----------------------------------------------------------
@@ -182,6 +189,8 @@ nav.toc a:hover{background:var(--bg)}
 .hero-h{font-size:18px;font-weight:700;color:var(--ink)}
 .hero-sub{margin-top:4px;font-size:13px;color:var(--ink2)}
 .hs-bad{color:var(--bad);font-weight:600}.hs-warn{color:var(--warn);font-weight:600}.hs-ok{color:var(--ok);font-weight:600}
+.hero-trend{margin-top:5px;font-size:12.5px;color:var(--ink2)}
+.mut{color:var(--mut)}
 .hero-note{margin-top:4px;font-size:11.5px;color:var(--mut)}
 .summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px;margin:0 0 22px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
