@@ -47,7 +47,7 @@ function Get-CIPPSitePermissionsReportData {
 
     # ---- SharePoint Sites ----------------------------------------------------------
     Invoke-Section 'SharePoint Sites' {
-        $sites = @(New-GraphGetRequest -uri "$GraphBeta/sites?search=*" -tenantid $TenantFilter | Select-Object -First 50)
+        $sites = @(New-GraphGetRequest -uri 'https://graph.microsoft.com/v1.0/sites?search=*' -tenantid $TenantFilter -AsApp $true | Select-Object -First 50)
         $r = New-RowList
         foreach ($s in $sites) {
             $webTemplate = if ($s.PSObject.Properties.Name -contains 'webTemplate') { $s.webTemplate } else { $s.sharepointIds.webId }

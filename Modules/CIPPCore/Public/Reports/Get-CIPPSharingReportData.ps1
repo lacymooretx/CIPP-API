@@ -86,7 +86,7 @@ function Get-CIPPSharingReportData {
 
     # ---- Sites ---------------------------------------------------------------------
     Invoke-Section 'Sites' {
-        $sites = @(New-GraphGetRequest -uri "$GraphBeta/sites?search=*" -tenantid $TenantFilter)
+        $sites = @(New-GraphGetRequest -uri 'https://graph.microsoft.com/v1.0/sites?search=*' -tenantid $TenantFilter -AsApp $true)
         $r = New-RowList
         foreach ($s in $sites) { $r.Add(@(($s.displayName ?? $s.name), $s.webUrl, $s.createdDateTime)) }
         Add-Finding 'SharePoint sites' 'info' "$($sites.Count) site(s) discovered in the tenant."
