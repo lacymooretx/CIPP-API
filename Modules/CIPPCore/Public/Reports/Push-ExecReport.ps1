@@ -31,7 +31,7 @@ function Push-ExecReport {
             Sort-Object { [int64]$_.DateUnix } -Descending | Select-Object -First 1
         if ($Prev -and $Score.Scored) {
             $PrevFail = @()
-            try { $PrevFail = @(($Prev.FailTitles | ConvertFrom-Json)) } catch {}
+            if ($Prev.FailTitles) { $PrevFail = @("$($Prev.FailTitles)" -split '; ' | Where-Object { $_ }) }
             $Model.Trend = @{
                 PrevScore    = [int]$Prev.Score
                 PrevDate     = ([datetime]$Prev.Date).ToString('dd MMM yyyy')
@@ -47,22 +47,31 @@ function Push-ExecReport {
     try {
         $HistTable = Get-CIPPTable -TableName 'CippReportHistory'
         $Now = Get-Date
-        Add-CIPPAzDataTableEntity @HistTable -Entity @{
-            PartitionKey = "$TenantFilter"
-            RowKey       = "$ReportType-$([guid]::NewGuid().ToString())"
-            Tenant       = "$TenantFilter"
-            TenantName   = "$($Model.TenantName)"
-            ReportType   = "$ReportType"
-            Title        = "$($Model.Title)"
+        $Entity = @{
+            PartitionKey = [string]"$TenantFilter"
+            RowKey       = [string]("$ReportType-" + [guid]::NewGuid().ToString())
+            Tenant       = [string]"$TenantFilter"
+            TenantName   = [string]"$($Model.TenantName)"
+            ReportType   = [string]"$ReportType"
+            Title        = [string]"$($Model.Title)"
             Score        = [int]$Score.Score
-            Grade        = "$($Score.Grade)"
+            Grade        = [string]"$($Score.Grade)"
             Fail         = [int]$Score.Fail
             Warn         = [int]$Score.Warn
             Pass         = [int]$Score.Pass
-            FailTitles   = ($CurFailTitles | ConvertTo-Json -Compress)
-            Date         = $Now.ToString('o')
+            FailTitles   = [string](@($CurFailTitles) -join '; ')
+            Date         = [string]$Now.ToString('o')
             DateUnix     = [int64]($Now.ToUniversalTime() - [datetime]'1970-01-01').TotalSeconds
-        } -Force | Out-Null
+        }
+        # coerce any stray non-primitive to string so AzBobbyTables never sees a PSObject
+        foreach ($k in @($Entity.Keys)) {
+            $v = $Entity[$k]
+            if ($null -eq $v) { $Entity.Remove($k) }
+            elseif ($v -isnot [string] -and $v -isnot [int] -and $v -isnot [int64] -and $v -isnot [bool] -and $v -isnot [double]) {
+                $Entity[$k] = [string]$v
+            }
+        }
+        Add-CIPPAzDataTableEntity @HistTable -Entity $Entity -Force | Out-Null
     } catch { Write-LogMessage -API 'ReportHistory' -message "history write: $($_.Exception.Message)" -Sev 'Error' }
 
     $Bytes = [System.Text.Encoding]::UTF8.GetBytes($Html)
