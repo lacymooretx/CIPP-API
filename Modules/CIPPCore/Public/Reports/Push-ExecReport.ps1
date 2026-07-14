@@ -17,7 +17,8 @@ function Push-ExecReport {
     param(
         [Parameter(Mandatory = $true)]
         [string]$TenantFilter,
-        [string]$ReportType = 'Security'
+        [string]$ReportType = 'Security',
+        [bool]$ConnectWiseTicket = $false
     )
 
     $Model = Get-CIPPReportData -TenantFilter $TenantFilter -ReportType $ReportType
@@ -83,6 +84,30 @@ function Push-ExecReport {
     $FailCount = @($Model.Findings | Where-Object { $_.Status -eq 'fail' }).Count
     $WarnCount = @($Model.Findings | Where-Object { $_.Status -eq 'warn' }).Count
     $ResultMessage = "$($Model.Title) generated for $($Model.TenantName) ($($Model.TenantDomain)) - $(@($Model.Sections).Count) sections, $FailCount action item(s), $WarnCount to review."
+
+    # ---- optional ConnectWise ticket (plain-text summary; full report goes by email) ----
+    if ($ConnectWiseTicket) {
+        try {
+            $Tenant = Get-Tenants -IncludeErrors | Where-Object { $_.defaultDomainName -eq $TenantFilter -or $_.customerId -eq $TenantFilter } | Select-Object -First 1
+            $MappingFile = Get-ExtensionMapping -Extension 'ConnectWise'
+            $MappedId = ($MappingFile | Where-Object { $_.RowKey -eq $Tenant.customerId }).IntegrationId
+            if ($MappedId) {
+                $Sum = "<b>$($Model.Title)</b> for $($Model.TenantName) ($($Model.TenantDomain))<br>"
+                $Sum += "Posture grade: $($Score.Grade) ($($Score.Score)/100) - $($Score.Fail) action item(s), $($Score.Warn) to review, $($Score.Pass) passing.<br><br>"
+                foreach ($f in @($Model.Findings | Where-Object { "$($_.Status)".ToLower() -in @('fail', 'warn') })) {
+                    $Sum += "$("$($f.Status)".ToUpper()): $($f.Title) - $($f.Detail)<br>"
+                }
+                $Sum += "<br>The full branded report was delivered by email."
+                $CwResult = New-ConnectWiseTicket -Title "$($Model.Title) - $($Model.TenantName) - Grade $($Score.Grade)" -Description $Sum -Client $MappedId
+                $ResultMessage += " | ConnectWise: $CwResult"
+            } else {
+                $ResultMessage += ' | ConnectWise: no company mapping for this tenant (map it under Extensions).'
+            }
+        } catch {
+            Write-LogMessage -API 'ReportConnectWise' -message "CW ticket failed: $($_.Exception.Message)" -Sev 'Error'
+            $ResultMessage += " | ConnectWise ticket failed: $($_.Exception.Message)"
+        }
+    }
 
     return @{
         Results         = $ResultMessage

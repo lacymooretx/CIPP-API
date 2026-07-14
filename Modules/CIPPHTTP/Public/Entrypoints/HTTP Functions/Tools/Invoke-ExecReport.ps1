@@ -22,6 +22,7 @@ function Invoke-ExecReport {
     $ReportType = $Request.Body.ReportType ?? $Request.Query.ReportType ?? 'Security'
     $TruthyValues = @($true, 'true', 'True', 1, '1', 'yes', 'on')
     $Download = ($Request.Body.Download ?? $Request.Query.Download) -in $TruthyValues
+    $ConnectWiseTicket = ($Request.Body.ConnectWiseTicket ?? $Request.Query.ConnectWiseTicket) -in $TruthyValues
 
     if (-not $TenantFilter) {
         return ([HttpResponseContext]@{
@@ -31,7 +32,7 @@ function Invoke-ExecReport {
     }
 
     try {
-        $Report = Push-ExecReport -TenantFilter $TenantFilter -ReportType $ReportType
+        $Report = Push-ExecReport -TenantFilter $TenantFilter -ReportType $ReportType -ConnectWiseTicket $ConnectWiseTicket
         Write-LogMessage -headers $Headers -API $APIName -tenant $TenantFilter -message "Generated $ReportType report for $TenantFilter" -Sev 'Info'
 
         if ($Download) {
