@@ -5,8 +5,8 @@ function Get-ConnectWiseBoards {
 
     $BaseURL = "$($Configuration.BaseURL)/v4_6_release/apis/3.0"
 
-    $Boards = Invoke-RestMethod -Uri "$BaseURL/service/boards?pageSize=1000" -Method GET -Headers $Headers
-    $Priorities = Invoke-RestMethod -Uri "$BaseURL/service/priorities?pageSize=1000" -Method GET -Headers $Headers
+    $Boards = Invoke-RestMethod -AllowInsecureRedirect -Uri "$BaseURL/service/boards?pageSize=1000" -Method GET -Headers $Headers
+    $Priorities = Invoke-RestMethod -AllowInsecureRedirect -Uri "$BaseURL/service/priorities?pageSize=1000" -Method GET -Headers $Headers
 
     return @{
         Boards     = $Boards

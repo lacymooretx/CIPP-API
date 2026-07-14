@@ -23,7 +23,7 @@ function New-ConnectWiseTicket {
         if ($ExistingTicket) {
             Write-Information "Ticket already exists in ConnectWise: $($ExistingTicket.TicketID)"
 
-            $Ticket = Invoke-RestMethod -Uri "$BaseURL/service/tickets/$($ExistingTicket.TicketID)" -Method GET -Headers $Headers -SkipHttpErrorCheck
+            $Ticket = Invoke-RestMethod -AllowInsecureRedirect -Uri "$BaseURL/service/tickets/$($ExistingTicket.TicketID)" -Method GET -Headers $Headers -SkipHttpErrorCheck
             if ($Ticket.id -and -not $Ticket.closedFlag) {
                 Write-Information 'Ticket is still open, adding note'
                 $NoteBody = @{
@@ -37,7 +37,7 @@ function New-ConnectWiseTicket {
 
                 try {
                     if ($PSCmdlet.ShouldProcess('Add note to ConnectWise ticket', 'Add note')) {
-                        $null = Invoke-RestMethod -Uri "$BaseURL/service/tickets/$($ExistingTicket.TicketID)/notes" -Method POST -Headers $Headers -Body $NoteBody
+                        $null = Invoke-RestMethod -AllowInsecureRedirect -Uri "$BaseURL/service/tickets/$($ExistingTicket.TicketID)/notes" -Method POST -Headers $Headers -Body $NoteBody
                         Write-Information "Note added to ticket in ConnectWise: $($ExistingTicket.TicketID)"
                     }
                     return "Note added to ticket in ConnectWise: $($ExistingTicket.TicketID)"
@@ -80,7 +80,7 @@ function New-ConnectWiseTicket {
     Write-Information $Body
     try {
         if ($PSCmdlet.ShouldProcess('Send ticket to ConnectWise Manage', 'Create ticket')) {
-            $Ticket = Invoke-RestMethod -Uri "$BaseURL/service/tickets" -Method POST -Headers $Headers -Body $Body
+            $Ticket = Invoke-RestMethod -AllowInsecureRedirect -Uri "$BaseURL/service/tickets" -Method POST -Headers $Headers -Body $Body
             Write-Information "Ticket created in ConnectWise: $($Ticket.id)"
 
             if ($Configuration.ConsolidateTickets) {

@@ -27,7 +27,7 @@ function Get-ConnectWiseMapping {
     $AllCompanies = [System.Collections.Generic.List[object]]::new()
 
     do {
-        $Result = Invoke-RestMethod -Uri "$BaseURL/company/companies?pageSize=$PageSize&page=$Page&conditions=status/name=%22Active%22" -Method GET -Headers $Headers
+        $Result = Invoke-RestMethod -AllowInsecureRedirect -Uri "$BaseURL/company/companies?pageSize=$PageSize&page=$Page&conditions=status/name=%22Active%22" -Method GET -Headers $Headers
         if ($Result) {
             $AllCompanies.AddRange(@($Result))
         }
