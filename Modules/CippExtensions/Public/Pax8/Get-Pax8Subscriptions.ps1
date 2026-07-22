@@ -50,6 +50,7 @@ function Get-Pax8Subscriptions {
                         billingStart  = $s.billingStart
                         startDate     = $s.startDate
                         endDate       = $s.endDate
+                        commitmentTerm = $s.commitmentTerm
                         partnerCost   = $s.partnerCost
                         currencyCode  = $s.currencyCode
                     })
